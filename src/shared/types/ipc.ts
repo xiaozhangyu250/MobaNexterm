@@ -1,0 +1,96 @@
+import type { Session } from './session';
+
+// IPC API contract — single source of truth shared by main / preload / renderer.
+
+/** One row in the remote SFTP file list (serialisable subset of ssh2 attrs). */
+export interface SftpListEntry {
+  name: string;
+  isDirectory: boolean;
+  isSymlink: boolean;
+  size: number;
+  mtimeMs: number | null;
+  mode: number | null;
+}
+
+export interface NewSessionInput {
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  authKind: 'password' | 'key';
+  password?: string;
+  privateKeyPath?: string;
+  passphrase?: string;
+  groupId?: string;
+}
+
+export type Language = 'en' | 'zh';
+
+export interface IpcApi {
+  app: {
+    ping(): Promise<'pong'>;
+    getVersion(): Promise<string>;
+    getPlatform(): Promise<NodeJS.Platform>;
+    minimize(): Promise<void>;
+    maximize(): Promise<void>;
+    close(): Promise<void>;
+    getPathForFile(file: File): string;
+  };
+  session: {
+    list(): Promise<Session[]>;
+    create(input: NewSessionInput): Promise<Session>;
+    update(id: string, patch: Partial<NewSessionInput>): Promise<Session>;
+    remove(id: string): Promise<void>;
+  };
+  ssh: {
+    /** Resolves only after shell + SFTP handshake; use this for initial tab / SFTP flags (avoids race with `ssh:status` events). */
+    connect(sessionId: string): Promise<{
+      tabId: string;
+      sftpAvailable: boolean;
+      sftpMessage?: string;
+    }>;
+    write(tabId: string, data: string): Promise<void>;
+    resize(tabId: string, cols: number, rows: number): Promise<void>;
+    disconnect(tabId: string): Promise<void>;
+  };
+  sftp: {
+    list(tabId: string, path: string): Promise<SftpListEntry[]>;
+    realpath(tabId: string, path: string): Promise<string>;
+    mkdir(tabId: string, path: string): Promise<void>;
+    remove(tabId: string, path: string, kind: 'file' | 'directory'): Promise<void>;
+    rename(tabId: string, fromPath: string, toPath: string): Promise<void>;
+    chmod(tabId: string, path: string, mode: number): Promise<void>;
+    /** Opens a native file picker and uploads into `remoteDir`. */
+    upload(tabId: string, remoteDir: string): Promise<void>;
+    /** Uploads explicit local filesystem paths into `remoteDir`. */
+    uploadPaths(tabId: string, remoteDir: string, localPaths: string[]): Promise<void>;
+    /** Opens a save/folder dialog and downloads a remote file or directory. */
+    download(tabId: string, remotePath: string, kind?: 'file' | 'directory'): Promise<void>;
+  };
+}
+
+// Events emitted from main → renderer.
+export interface IpcEventMap {
+  'ssh:data': { tabId: string; data: string };
+  'ssh:cwd': { tabId: string; cwd: string };
+  'ssh:status': { tabId: string; status: 'connecting' | 'connected' | 'closed' | 'error'; message?: string };
+  'sftp:status': { tabId: string; available: boolean; message?: string };
+  'sftp:progress': {
+    taskId: string;
+    tabId?: string;
+    transferred: number;
+    total: number;
+    label?: string;
+    direction?: 'upload' | 'download';
+  };
+  'sftp:done': { taskId: string; tabId?: string; label?: string; direction?: 'upload' | 'download' };
+  'sftp:error': {
+    taskId: string;
+    tabId?: string;
+    message: string;
+    label?: string;
+    direction?: 'upload' | 'download';
+  };
+}
+
+export type IpcEventName = keyof IpcEventMap;

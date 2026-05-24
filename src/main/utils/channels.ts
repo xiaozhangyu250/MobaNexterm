@@ -1,0 +1,50 @@
+// Centralised IPC channel name registry. Use these constants everywhere
+// to avoid string drift between main / preload / renderer.
+
+export const Channels = {
+  App: {
+    Ping: 'app:ping',
+    Version: 'app:get-version',
+    Platform: 'app:get-platform',
+    Minimize: 'app:minimize',
+    Maximize: 'app:maximize',
+    Close: 'app:close',
+  },
+  Session: {
+    List: 'session:list',
+    Create: 'session:create',
+    Update: 'session:update',
+    Remove: 'session:remove',
+  },
+  Ssh: {
+    Connect: 'ssh:connect',
+    Write: 'ssh:write',
+    Resize: 'ssh:resize',
+    Disconnect: 'ssh:disconnect',
+    DataEvent: 'ssh:data',
+    CwdEvent: 'ssh:cwd',
+    StatusEvent: 'ssh:status',
+  },
+  Sftp: {
+    ReadDir: 'sftp:read-dir',
+    Realpath: 'sftp:realpath',
+    Upload: 'sftp:upload',
+    UploadPaths: 'sftp:upload-paths',
+    Download: 'sftp:download',
+    Mkdir: 'sftp:mkdir',
+    Remove: 'sftp:remove',
+    Rename: 'sftp:rename',
+    Chmod: 'sftp:chmod',
+    ReadFile: 'sftp:read-file',
+    WriteFile: 'sftp:write-file',
+    StatusEvent: 'sftp:status',
+    ProgressEvent: 'sftp:progress',
+    DoneEvent: 'sftp:done',
+    ErrorEvent: 'sftp:error',
+  },
+  Tunnel: {
+    Create: 'tunnel:create',
+    Close: 'tunnel:close',
+    List: 'tunnel:list',
+  },
+} as const;

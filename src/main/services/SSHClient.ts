@@ -298,9 +298,24 @@ export const SSHClient = {
     const isCurrent = (): boolean => tabs.get(tabId)?.client === client;
 
     return new Promise<{ sftpAvailable: boolean; sftpMessage?: string }>((resolve, reject) => {
+      let settled = false;
+      const resolveConnection = (result: {
+        sftpAvailable: boolean;
+        sftpMessage?: string;
+      }): void => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+      const rejectConnection = (error: Error): void => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+
       client.once('ready', () => {
         if (!isCurrent()) {
-          reject(new Error('Connection cancelled'));
+          rejectConnection(new Error('Connection cancelled'));
           return;
         }
 
@@ -325,7 +340,7 @@ export const SSHClient = {
         client.shell({ term: 'xterm-256color', cols: 80, rows: 24 }, (err, stream) => {
           if (!isCurrent()) {
             stream?.close();
-            reject(new Error('Connection cancelled'));
+            rejectConnection(new Error('Connection cancelled'));
             return;
           }
           if (err) {
@@ -338,7 +353,7 @@ export const SSHClient = {
             }
             if (isCurrent()) tabs.delete(tabId);
             sendStatus(tabId, 'error', err.message);
-            reject(err);
+            rejectConnection(err);
             return;
           }
           void (async () => {
@@ -346,7 +361,7 @@ export const SSHClient = {
             const tab = tabs.get(tabId);
             if (!tab || tab.client !== client) {
               stream.close();
-              reject(new Error('Connection cancelled'));
+              rejectConnection(new Error('Connection cancelled'));
               return;
             }
             tab.channel = stream;
@@ -371,18 +386,27 @@ export const SSHClient = {
             installCwdHook(stream);
             sendSftpStatus(tabId, sf.sftpAvailable, sf.sftpMessage);
             sendStatus(tabId, 'connected');
-            resolve({ sftpAvailable: sf.sftpAvailable, sftpMessage: sf.sftpMessage });
+            resolveConnection({ sftpAvailable: sf.sftpAvailable, sftpMessage: sf.sftpMessage });
           })();
         });
       });
 
-      client.once('error', (err) => {
-        logger.error('ssh client error', { tabId, sessionId, message: err.message });
+      // ssh2 may emit more than one error while a socket is being torn down
+      // before handshake. Keep this listener for the client's full lifetime so
+      // expected cancellation errors never become uncaught EventEmitter errors.
+      client.on('error', (err) => {
         if (isCurrent()) {
+          logger.error('ssh client error', { tabId, sessionId, message: err.message });
           sendStatus(tabId, 'error', err.message);
           tabs.delete(tabId);
+        } else {
+          logger.debug('ignored ssh error after tab closed or replaced', {
+            tabId,
+            sessionId,
+            message: err.message,
+          });
         }
-        reject(err);
+        rejectConnection(err);
       });
 
       client.once('close', () => {
@@ -390,7 +414,7 @@ export const SSHClient = {
           sendStatus(tabId, 'closed');
           tabs.delete(tabId);
         }
-        reject(new Error('Connection closed'));
+        rejectConnection(new Error('Connection closed'));
       });
 
       try {
@@ -399,7 +423,7 @@ export const SSHClient = {
         if (isCurrent()) tabs.delete(tabId);
         const error = e instanceof Error ? e : new Error(String(e));
         sendStatus(tabId, 'error', error.message);
-        reject(error);
+        rejectConnection(error);
       }
     });
   },

@@ -1,6 +1,5 @@
 import { Client, type ClientChannel, type SFTPWrapper, type FileEntryWithStats } from 'ssh2';
 import { mkdirSync, readFileSync, statSync, readdirSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
 import { basename, join as pathJoin, posix as pathPosix } from 'node:path';
 import { BrowserWindow } from 'electron';
 import { SessionManager } from './SessionManager';
@@ -243,9 +242,10 @@ function collectLocalFiles(
   return { files, dirs, isDirectory: true };
 }
 
-function disconnectTab(tabId: string): void {
+function disconnectTab(tabId: string, announce = true): void {
   const tab = tabs.get(tabId);
   if (!tab) return;
+  tabs.delete(tabId);
   try {
     tab.sftp?.end();
     tab.channel?.close();
@@ -253,24 +253,16 @@ function disconnectTab(tabId: string): void {
   } catch (e) {
     logger.warn('error closing ssh tab', { tabId, error: String(e) });
   }
-  tabs.delete(tabId);
-  sendStatus(tabId, 'closed');
+  if (announce) sendStatus(tabId, 'closed');
 }
 
 export const SSHClient = {
-  async connect(sessionId: string): Promise<{
-    tabId: string;
+  async connect(sessionId: string, tabId: string): Promise<{
     sftpAvailable: boolean;
     sftpMessage?: string;
   }> {
     const session = SessionManager.get(sessionId);
     if (!session) throw new Error(`Session not found: ${sessionId}`);
-
-    const tabId = randomUUID();
-    const client = new Client();
-    tabs.set(tabId, { id: tabId, sessionId, client });
-
-    sendStatus(tabId, 'connecting');
 
     const connectConfig: Parameters<Client['connect']>[0] = {
       host: session.host,
@@ -298,12 +290,25 @@ export const SSHClient = {
       connectConfig.agent = process.env['SSH_AUTH_SOCK'];
     }
 
-    return new Promise<{ tabId: string; sftpAvailable: boolean; sftpMessage?: string }>((resolve, reject) => {
+    disconnectTab(tabId, false);
+    const client = new Client();
+    tabs.set(tabId, { id: tabId, sessionId, client });
+    sendStatus(tabId, 'connecting');
+
+    const isCurrent = (): boolean => tabs.get(tabId)?.client === client;
+
+    return new Promise<{ sftpAvailable: boolean; sftpMessage?: string }>((resolve, reject) => {
       client.once('ready', () => {
+        if (!isCurrent()) {
+          reject(new Error('Connection cancelled'));
+          return;
+        }
+
         const sftpPromise = new Promise<{ sftpAvailable: boolean; sftpMessage?: string }>((res) => {
           client.sftp((sftpErr, sftp) => {
             const tab = tabs.get(tabId);
-            if (!tab) {
+            if (!tab || tab.client !== client) {
+              sftp?.end();
               res({ sftpAvailable: false, sftpMessage: 'Tab not found during SFTP setup' });
               return;
             }
@@ -318,6 +323,11 @@ export const SSHClient = {
         });
 
         client.shell({ term: 'xterm-256color', cols: 80, rows: 24 }, (err, stream) => {
+          if (!isCurrent()) {
+            stream?.close();
+            reject(new Error('Connection cancelled'));
+            return;
+          }
           if (err) {
             const tab = tabs.get(tabId);
             try {
@@ -326,7 +336,7 @@ export const SSHClient = {
             } catch {
               // ignore
             }
-            tabs.delete(tabId);
+            if (isCurrent()) tabs.delete(tabId);
             sendStatus(tabId, 'error', err.message);
             reject(err);
             return;
@@ -334,18 +344,26 @@ export const SSHClient = {
           void (async () => {
             const sf = await sftpPromise;
             const tab = tabs.get(tabId);
-            if (tab) tab.channel = stream;
+            if (!tab || tab.client !== client) {
+              stream.close();
+              reject(new Error('Connection cancelled'));
+              return;
+            }
+            tab.channel = stream;
             stream.on('data', (chunk: Buffer) => {
+              if (!isCurrent()) return;
               const data = chunk.toString('utf8');
               parseOsc7Cwd(tabId, data);
               send(Channels.Ssh.DataEvent, { tabId, data });
             });
             stream.stderr.on('data', (chunk: Buffer) => {
+              if (!isCurrent()) return;
               const data = chunk.toString('utf8');
               parseOsc7Cwd(tabId, data);
               send(Channels.Ssh.DataEvent, { tabId, data });
             });
             stream.on('close', () => {
+              if (!isCurrent()) return;
               sendStatus(tabId, 'closed');
               client.end();
               tabs.delete(tabId);
@@ -353,27 +371,36 @@ export const SSHClient = {
             installCwdHook(stream);
             sendSftpStatus(tabId, sf.sftpAvailable, sf.sftpMessage);
             sendStatus(tabId, 'connected');
-            resolve({ tabId, sftpAvailable: sf.sftpAvailable, sftpMessage: sf.sftpMessage });
+            resolve({ sftpAvailable: sf.sftpAvailable, sftpMessage: sf.sftpMessage });
           })();
         });
       });
 
       client.once('error', (err) => {
         logger.error('ssh client error', { tabId, sessionId, message: err.message });
-        sendStatus(tabId, 'error', err.message);
-        tabs.delete(tabId);
+        if (isCurrent()) {
+          sendStatus(tabId, 'error', err.message);
+          tabs.delete(tabId);
+        }
         reject(err);
       });
 
       client.once('close', () => {
-        const t = tabs.get(tabId);
-        if (t) {
+        if (isCurrent()) {
           sendStatus(tabId, 'closed');
           tabs.delete(tabId);
         }
+        reject(new Error('Connection closed'));
       });
 
-      client.connect(connectConfig);
+      try {
+        client.connect(connectConfig);
+      } catch (e) {
+        if (isCurrent()) tabs.delete(tabId);
+        const error = e instanceof Error ? e : new Error(String(e));
+        sendStatus(tabId, 'error', error.message);
+        reject(error);
+      }
     });
   },
 

@@ -43,9 +43,8 @@ export interface IpcApi {
     remove(id: string): Promise<void>;
   };
   ssh: {
-    /** Resolves only after shell + SFTP handshake; use this for initial tab / SFTP flags (avoids race with `ssh:status` events). */
-    connect(sessionId: string): Promise<{
-      tabId: string;
+    /** Connects or reconnects the renderer-owned tab and resolves after the shell + SFTP handshake. */
+    connect(sessionId: string, tabId: string): Promise<{
       sftpAvailable: boolean;
       sftpMessage?: string;
     }>;

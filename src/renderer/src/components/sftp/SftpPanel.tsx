@@ -32,49 +32,8 @@ import {
   Upload,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { joinRemote, posixDirname, posixNormalize } from '@/lib/remotePath';
 import { cn } from '@/lib/utils';
-
-function posixDirname(p: string): string {
-  if (!p) return '.';
-  const stripped = p.replace(/\/+$/, '');
-  if (!stripped) return '/';
-  const i = stripped.lastIndexOf('/');
-  if (i === -1) return '.';
-  if (i === 0) return '/';
-  return stripped.slice(0, i);
-}
-
-function posixNormalize(p: string): string {
-  const isAbs = p.startsWith('/');
-  const segs = p.split('/');
-  const stack: string[] = [];
-  for (const seg of segs) {
-    if (!seg || seg === '.') continue;
-    if (seg === '..') {
-      if (stack.length > 0) stack.pop();
-    } else stack.push(seg);
-  }
-  const joined = stack.join('/');
-  if (isAbs) return joined ? `/${joined}` : '/';
-  return joined || '.';
-}
-
-function posixJoin(a: string, b: string): string {
-  if (!b) return posixNormalize(a || '.');
-  if (b.startsWith('/')) return posixNormalize(b);
-  const left = a.replace(/\/+$/, '');
-  if (!left || left === '.') return posixNormalize(b);
-  return posixNormalize(`${left}/${b}`);
-}
-
-function joinRemote(cwd: string, name: string): string {
-  if (name === '..') {
-    if (!cwd || cwd === '/') return '/';
-    return posixDirname(cwd);
-  }
-  if (name === '.') return cwd || '.';
-  return posixNormalize(posixJoin(cwd || '.', name));
-}
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;

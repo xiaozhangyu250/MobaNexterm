@@ -20,7 +20,8 @@ const api: IpcApi = {
     remove: (id: string) => ipcRenderer.invoke(Channels.Session.Remove, id),
   },
   ssh: {
-    connect: (sessionId: string) => ipcRenderer.invoke(Channels.Ssh.Connect, sessionId),
+    connect: (sessionId: string, tabId: string) =>
+      ipcRenderer.invoke(Channels.Ssh.Connect, sessionId, tabId),
     write: (tabId: string, data: string) => ipcRenderer.invoke(Channels.Ssh.Write, tabId, data),
     resize: (tabId: string, cols: number, rows: number) =>
       ipcRenderer.invoke(Channels.Ssh.Resize, tabId, cols, rows),

@@ -7,6 +7,7 @@ export interface TerminalTab {
   sessionId: string;
   title: string;
   status: TabStatus;
+  connectionAttempt: number;
   errorMessage?: string;
   /** SFTP subsystem opened successfully for this connection. */
   sftpAvailable?: boolean;
@@ -18,6 +19,7 @@ interface TerminalState {
   tabs: TerminalTab[];
   activeId: string | null;
   openTab: (sessionId: string, title: string) => Promise<void>;
+  reconnectTab: (id: string) => Promise<void>;
   closeTab: (id: string) => Promise<void>;
   setActive: (id: string) => void;
   setStatus: (id: string, status: TabStatus, message?: string) => void;
@@ -30,20 +32,79 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   activeId: null,
 
   async openTab(sessionId, title) {
+    const tabId = crypto.randomUUID();
+    const tab: TerminalTab = {
+      id: tabId,
+      sessionId,
+      title,
+      status: 'connecting',
+      connectionAttempt: 1,
+    };
+    set({ tabs: [...get().tabs, tab], activeId: tabId });
+
     try {
-      const { tabId, sftpAvailable, sftpMessage } = await window.api.ssh.connect(sessionId);
-      const tab: TerminalTab = {
-        id: tabId,
-        sessionId,
-        title,
-        status: 'connected',
-        sftpAvailable,
-        sftpMessage,
-      };
-      set({ tabs: [...get().tabs, tab], activeId: tabId });
+      const { sftpAvailable, sftpMessage } = await window.api.ssh.connect(sessionId, tabId);
+      set({
+        tabs: get().tabs.map((t) =>
+          t.id === tabId && t.connectionAttempt === 1
+            ? { ...t, status: 'connected', sftpAvailable, sftpMessage, errorMessage: undefined }
+            : t,
+        ),
+      });
     } catch (e) {
       console.error('openTab failed', e);
-      throw e;
+      const message = e instanceof Error ? e.message : String(e);
+      set({
+        tabs: get().tabs.map((t) =>
+          t.id === tabId && t.connectionAttempt === 1
+            ? { ...t, status: 'error', errorMessage: message }
+            : t,
+        ),
+      });
+    }
+  },
+
+  async reconnectTab(id) {
+    const tab = get().tabs.find((t) => t.id === id);
+    if (!tab || tab.status === 'connecting') return;
+    const connectionAttempt = tab.connectionAttempt + 1;
+
+    set({
+      tabs: get().tabs.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              status: 'connecting',
+              connectionAttempt,
+              errorMessage: undefined,
+              sftpAvailable: undefined,
+              sftpMessage: undefined,
+              remoteCwd: undefined,
+            }
+          : t,
+      ),
+      activeId: id,
+    });
+
+    try {
+      const { sftpAvailable, sftpMessage } = await window.api.ssh.connect(tab.sessionId, id);
+      set({
+        tabs: get().tabs.map((t) =>
+          t.id === id && t.connectionAttempt === connectionAttempt
+            ? { ...t, status: 'connected', sftpAvailable, sftpMessage, errorMessage: undefined }
+            : t,
+        ),
+      });
+    } catch (e) {
+      console.error('reconnectTab failed', e);
+      const message = e instanceof Error ? e.message : String(e);
+      set({
+        tabs: get().tabs.map((t) =>
+          t.id === id && t.connectionAttempt === connectionAttempt
+            ? { ...t, status: 'error', errorMessage: message }
+            : t,
+        ),
+      });
     }
   },
 

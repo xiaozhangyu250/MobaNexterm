@@ -3,7 +3,9 @@ import { SSHClient } from '../services/SSHClient';
 import { Channels } from '../utils/channels';
 
 export function registerSshIpc(): void {
-  ipcMain.handle(Channels.Ssh.Connect, (_e, sessionId: string) => SSHClient.connect(sessionId));
+  ipcMain.handle(Channels.Ssh.Connect, (_e, sessionId: string, tabId: string) =>
+    SSHClient.connect(sessionId, tabId),
+  );
   ipcMain.handle(Channels.Ssh.Write, (_e, tabId: string, data: string) =>
     SSHClient.write(tabId, data),
   );

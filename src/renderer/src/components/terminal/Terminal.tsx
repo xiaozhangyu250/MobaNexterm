@@ -1,10 +1,14 @@
-import { useEffect, useRef } from 'react';
+import * as ContextMenu from '@radix-ui/react-context-menu';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { Clipboard, ClipboardPaste, Loader2 } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
+import { useI18n } from '@/lib/i18n';
+import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { useTerminalStore } from '@/stores/terminalStore';
+import { useTerminalStore, type TabStatus } from '@/stores/terminalStore';
 
 interface TerminalProps {
   tabId: string;
@@ -59,14 +63,22 @@ const xtermLightTheme = {
 };
 
 export function Terminal({ tabId }: TerminalProps) {
+  const t = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const setStatus = useTerminalStore((s) => s.setStatus);
+  const tab = useTerminalStore((s) => s.tabs.find((item) => item.id === tabId));
+  const reconnectTab = useTerminalStore((s) => s.reconnectTab);
   const terminalFontSize = useSettingsStore((s) => s.terminalFontSize);
   const theme = useSettingsStore((s) => s.theme);
   const initialFontSize = useRef(terminalFontSize);
   const initialTheme = useRef(theme);
+  const statusRef = useRef<TabStatus>(tab?.status ?? 'connecting');
+  const reconnectRef = useRef(reconnectTab);
+  const [hasSelection, setHasSelection] = useState(false);
+
+  statusRef.current = tab?.status ?? 'connecting';
+  reconnectRef.current = reconnectTab;
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -89,22 +101,62 @@ export function Terminal({ tabId }: TerminalProps) {
     term.open(containerRef.current);
     fit.fit();
 
+    async function copySelection() {
+      const selection = term.getSelection();
+      if (!selection) return;
+      try {
+        await navigator.clipboard.writeText(selection);
+      } catch (e) {
+        console.error('Failed to copy terminal selection', e);
+      }
+    }
+
+    async function pasteClipboard() {
+      if (statusRef.current !== 'connected') return;
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) term.paste(text);
+      } catch (e) {
+        console.error('Failed to paste into terminal', e);
+      }
+    }
+
+    term.attachCustomKeyEventHandler((event) => {
+      const key = event.key.toLowerCase();
+      if (event.ctrlKey && event.shiftKey && key === 'c') {
+        if (event.type === 'keydown') void copySelection();
+        return false;
+      }
+      if (event.ctrlKey && event.shiftKey && key === 'v') {
+        if (event.type === 'keydown') void pasteClipboard();
+        return false;
+      }
+      if (
+        event.type === 'keydown' &&
+        key === 'r' &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        (statusRef.current === 'closed' || statusRef.current === 'error')
+      ) {
+        void reconnectRef.current(tabId);
+        return false;
+      }
+      return true;
+    });
+
     // Pipe terminal input to backend
     const writeDisposable = term.onData((data) => {
       void window.api.ssh.write(tabId, data);
+    });
+    const selectionDisposable = term.onSelectionChange(() => {
+      setHasSelection(term.hasSelection());
     });
 
     // Pipe backend output to terminal
     const offData = window.events.on('ssh:data', (payload) => {
       if (payload.tabId === tabId) term.write(payload.data);
-    });
-    const offStatus = window.events.on('ssh:status', (payload) => {
-      if (payload.tabId === tabId) {
-        setStatus(tabId, payload.status, payload.message);
-        if (payload.status === 'error' && payload.message) {
-          term.write(`\r\n\x1b[31m✗ ${payload.message}\x1b[0m\r\n`);
-        }
-      }
     });
 
     // Resize handling
@@ -123,14 +175,14 @@ export function Terminal({ tabId }: TerminalProps) {
 
     return () => {
       writeDisposable.dispose();
+      selectionDisposable.dispose();
       offData();
-      offStatus();
       ro.disconnect();
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
     };
-  }, [tabId, setStatus]);
+  }, [tabId]);
 
   useEffect(() => {
     const term = termRef.current;
@@ -145,5 +197,99 @@ export function Terminal({ tabId }: TerminalProps) {
     }
   }, [tabId, terminalFontSize, theme]);
 
-  return <div ref={containerRef} className="h-full w-full bg-bg p-2" />;
+  useEffect(() => {
+    termRef.current?.focus();
+  }, [tab?.status]);
+
+  async function copySelection() {
+    const selection = termRef.current?.getSelection();
+    if (!selection) return;
+    try {
+      await navigator.clipboard.writeText(selection);
+    } catch (e) {
+      console.error('Failed to copy terminal selection', e);
+    }
+  }
+
+  async function pasteClipboard() {
+    if (tab?.status !== 'connected') return;
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) termRef.current?.paste(text);
+    } catch (e) {
+      console.error('Failed to paste into terminal', e);
+    }
+  }
+
+  return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div className="relative h-full w-full bg-bg">
+          <div ref={containerRef} className="h-full w-full p-2" />
+          <ConnectionState status={tab?.status ?? 'connecting'} message={tab?.errorMessage} />
+        </div>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            termRef.current?.focus();
+          }}
+          className="z-50 min-w-[180px] rounded-md border border-border bg-bg-elevated p-1 text-xs text-text shadow-overlay"
+        >
+          <ContextMenu.Item
+            disabled={!hasSelection}
+            onSelect={() => void copySelection()}
+            className={menuItemClass}
+          >
+            <Clipboard className="h-3.5 w-3.5" />
+            <span className="flex-1">{t('common.copy')}</span>
+            <span className="text-[10px] text-text-muted">Ctrl+Shift+C</span>
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            disabled={tab?.status !== 'connected'}
+            onSelect={() => void pasteClipboard()}
+            className={menuItemClass}
+          >
+            <ClipboardPaste className="h-3.5 w-3.5" />
+            <span className="flex-1">{t('common.paste')}</span>
+            <span className="text-[10px] text-text-muted">Ctrl+Shift+V</span>
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
+  );
+}
+
+const menuItemClass = cn(
+  'flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 outline-none',
+  'data-[highlighted]:bg-bg data-[disabled]:cursor-default data-[disabled]:opacity-40',
+);
+
+function ConnectionState({ status, message }: { status: TabStatus; message?: string }) {
+  const t = useI18n();
+  if (status === 'connected') return null;
+
+  if (status === 'connecting') {
+    return (
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/90">
+        <div className="flex items-center gap-2 text-xs text-text-muted">
+          <Loader2 className="h-4 w-4 animate-spin text-accent" />
+          <span>{t('terminal.connecting')}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-bg/90 px-8 text-center">
+      <div className="max-w-lg font-mono text-xs">
+        <div className={status === 'error' ? 'text-danger' : 'text-text'}>
+          {status === 'error' ? t('terminal.connectionError') : t('terminal.connectionClosed')}
+        </div>
+        {message ? <div className="mt-1 break-words text-text-muted">{message}</div> : null}
+        <div className="mt-3 text-text-muted">{t('terminal.pressRReconnect')}</div>
+      </div>
+    </div>
+  );
 }

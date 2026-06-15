@@ -35,13 +35,9 @@ function SessionItem({ session }: { session: Session }) {
   const openDialog = useUiStore((s) => s.openSessionDialog);
   const setSidebarPanel = useUiStore((s) => s.setSidebarPanel);
 
-  async function connect() {
-    try {
-      await openTab(session.id, session.name);
-      setSidebarPanel('browser');
-    } catch (e) {
-      console.error(e);
-    }
+  function connect() {
+    void openTab(session.id, session.name);
+    setSidebarPanel('browser');
   }
 
   return (

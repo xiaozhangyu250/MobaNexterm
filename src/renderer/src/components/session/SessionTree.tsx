@@ -40,7 +40,6 @@ function SessionItem({ session }: { session: Session }) {
       await openTab(session.id, session.name);
       setSidebarPanel('browser');
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error(e);
     }
   }

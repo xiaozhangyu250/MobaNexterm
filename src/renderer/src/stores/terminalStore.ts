@@ -42,7 +42,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       };
       set({ tabs: [...get().tabs, tab], activeId: tabId });
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.error('openTab failed', e);
       throw e;
     }

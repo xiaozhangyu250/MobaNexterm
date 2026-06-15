@@ -6,13 +6,12 @@ directories:
   output: release
   buildResources: build
 
+artifactName: ${productName}-${version}-${arch}.${ext}
+
 files:
   - out/**/*
   - package.json
   - '!**/*.map'
-
-asarUnpack:
-  - resources/**
 
 linux:
   target:
@@ -21,25 +20,3 @@ linux:
   category: Network
   icon: build/icon.png
   maintainer: MobaNexterm <noreply@mobanexterm.app>
-
-win:
-  target:
-    - target: nsis
-      arch:
-        - x64
-  icon: build/icon.ico
-
-mac:
-  target:
-    - dmg
-  icon: build/icon.png
-  category: public.app-category.developer-tools
-
-nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
-  perMachine: false
-
-publish:
-  provider: github
-  releaseType: draft

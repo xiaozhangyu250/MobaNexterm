@@ -15,4 +15,11 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 .env
-.env.local
+.env.*
+!.env.example
+!.env.*.example
+
+# Local AI tooling and development notes
+.agents/
+.codex/
+return.md

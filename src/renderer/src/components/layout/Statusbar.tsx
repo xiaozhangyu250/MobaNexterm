@@ -8,11 +8,7 @@ export function Statusbar() {
 
   useEffect(() => {
     window.api.app.getVersion().then(setVersion);
-    window.api.app.ping().then((r: string) => {
-      setPong(r);
-      // eslint-disable-next-line no-console
-      console.log('[renderer] window.api.ping →', r);
-    });
+    window.api.app.ping().then(setPong);
   }, []);
 
   return (

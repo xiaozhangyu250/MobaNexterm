@@ -1,83 +1,85 @@
 # MobaNexterm
 
-A cross-platform, modern MobaXterm-like remote management tool for Linux and Windows.
+MobaNexterm is a Linux-first desktop client for managing SSH sessions, remote
+terminals, and SFTP files in one application. It is built with Electron,
+React, TypeScript, xterm.js, and ssh2.
 
-> Status: **W1 skeleton** — main window + IPC scaffolding only. SSH/SFTP coming in W3–W5.
+The project is under active development. Back up important remote files before
+using file operations in production environments.
 
-## Tech Stack
+## Features
 
-- Electron 33 + React 18 + TypeScript 5 (strict)
-- electron-vite + Vite 5 (HMR for main / preload / renderer)
-- Tailwind CSS 3 + shadcn/ui (Radix primitives) + lucide-react
-- Zustand for state
-- xterm.js 5 for terminal rendering
-- ssh2 / node-pty for transport
-- electron-store + Electron safeStorage for persistence + credential encryption
-- electron-builder for AppImage / .deb / .exe / .dmg
+- Saved SSH sessions with password or private-key authentication
+- Multi-tab terminal sessions powered by xterm.js
+- SFTP browsing, upload, download, rename, permissions, and file editing
+- Encrypted credential storage through Electron `safeStorage` when available
+- Dark and light themes, UI scaling, terminal font settings, and Chinese/English UI
+- Linux packaging as AppImage and Debian packages
 
-## Quickstart
+## Requirements
+
+- Node.js 20 or newer
+- npm
+- Linux desktop environment for development and Linux packaging
+
+## Development
 
 ```bash
-npm install         # installs with --no-bin-links (project lives on exfat — see Filesystem note)
-npm run dev         # launches Electron with HMR
+git clone https://github.com/mobanexterm/mobanexterm.git
+cd mobanexterm
+npm ci
+npm run dev
 ```
 
-Expected on first launch: a 1280×800 window with a frosted titlebar, an empty
-sessions sidebar, and a status bar showing "IPC pong" — confirming the
-preload bridge is working end-to-end.
+Available checks:
 
-## Filesystem note
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
 
-This repo currently lives on an **exfat** mount, which does NOT support
-symbolic links. The Node toolchain (npm/pnpm) normally creates symlinks in
-`node_modules/.bin/`. Workarounds wired into the repo:
+## Linux Packaging
 
-- `.npmrc` sets `bin-links=false`
-- `scripts/setup-bin-shims.cjs` runs as part of `postinstall` and creates
-  real-file shim scripts in `node_modules/.bin/` that `exec node ...` the real
-  binary. This works without any symlinks.
+Build AppImage and Debian packages:
 
-Once moved to an ext4/btrfs/NTFS filesystem, you can delete `.npmrc` and the
-shim script, and use plain `pnpm install` / `pnpm dev`.
+```bash
+npm run package:linux -- --version 0.1.0
+```
 
-## Scripts
+Artifacts are written to `release/`. You can select individual targets or skip
+the type check when iterating locally:
 
-| Command | Purpose |
-|---|---|
-| `pnpm dev` | Run with HMR |
-| `pnpm build` | Compile main / preload / renderer |
-| `pnpm typecheck` | Strict TS check across both project refs |
-| `pnpm lint` / `pnpm format` | ESLint / Prettier |
-| `pnpm test` | Vitest unit tests |
-| `pnpm test:e2e` | Playwright Electron E2E |
-| `pnpm dist:linux` | Build AppImage + .deb |
-| `pnpm dist:win` | Build NSIS installer |
-| `pnpm dist:mac` | Build .dmg |
-| `pnpm rebuild` | Rebuild ssh2 / node-pty against Electron ABI |
+```bash
+npm run package:linux -- --version 0.1.0 --targets deb
+npm run package:linux -- --targets deb,AppImage
+npm run package:linux -- --skip-checks
+```
 
 ## Project Layout
 
-```
+```text
 src/
-├── main/         Electron main process — IPC handlers, ssh2 connection pool, SFTP, tunnels
-├── preload/      contextBridge — exposes typed window.api / window.events
-├── renderer/     React UI — sidebar, terminal tabs, SFTP panel, settings
-└── shared/       Types & constants shared across processes
+  main/       Electron main process, IPC handlers, SSH/SFTP services
+  preload/    Typed context bridge exposed to the renderer
+  renderer/   React user interface and client-side state
+  shared/     Types and constants shared across processes
+scripts/      Development and packaging helpers
+tests/        Unit tests
 ```
 
-## Roadmap
+## Filesystem Compatibility
 
-See [plan file](https://example.invalid) for the full 8-week roadmap. Short version:
+This repository includes `.npmrc` and `scripts/setup-bin-shims.cjs` for
+filesystems that do not support symbolic links, such as exFAT. On regular Linux
+filesystems the workaround is harmless and no extra setup is required.
 
-- **W1** ✅ skeleton + IPC
-- **W2** session CRUD + persistence
-- **W3** SSH single-tab terminal (ssh2 + xterm.js)
-- **W4** multi-tab + terminal polish
-- **W5** SFTP browser + transfers
-- **W6** SSH tunnels + credential encryption (safeStorage)
-- **W7** settings + i18n + themes
-- **W8** packaging + CI + release
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a pull request.
+Security issues should be reported according to [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)

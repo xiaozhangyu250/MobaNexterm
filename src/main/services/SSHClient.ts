@@ -51,6 +51,8 @@ function parseOsc7Cwd(tabId: string, chunk: string): void {
   const tab = tabs.get(tabId);
   if (!tab) return;
   const input = `${tab.cwdBuffer ?? ''}${chunk}`;
+  // OSC sequences are delimited by BEL or ESC followed by a backslash.
+  // eslint-disable-next-line no-control-regex
   const osc7 = /\x1b\]7;([^\x07\x1b]+)(?:\x07|\x1b\\)/g;
   let match: RegExpExecArray | null;
   while ((match = osc7.exec(input)) !== null) {
@@ -123,6 +125,35 @@ function getSftp(tabId: string): SFTPWrapper {
   return tab.sftp;
 }
 
+async function sftpEnsureDir(sftp: SFTPWrapper, remotePath: string): Promise<void> {
+  try {
+    const stat = await sftpStat(sftp, remotePath);
+    if (stat.isDirectory) return;
+    throw new Error(`Remote path exists but is not a directory: ${remotePath}`);
+  } catch {
+    // The directory may not exist yet, or the server may only report a generic
+    // SFTP failure. Try mkdir, then verify with stat for servers that return
+    // "Failure" when mkdir races with or targets an existing directory.
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    sftp.mkdir(remotePath, async (err) => {
+      if (!err) {
+        resolve();
+        return;
+      }
+
+      try {
+        const stat = await sftpStat(sftp, remotePath);
+        if (stat.isDirectory) resolve();
+        else reject(new Error(`Remote path exists but is not a directory: ${remotePath}`));
+      } catch {
+        reject(err);
+      }
+    });
+  });
+}
+
 function sftpMkdirp(sftp: SFTPWrapper, remotePath: string): Promise<void> {
   const normalized = pathPosix.normalize(remotePath);
   const parts = normalized.split('/').filter(Boolean);
@@ -131,14 +162,10 @@ function sftpMkdirp(sftp: SFTPWrapper, remotePath: string): Promise<void> {
   return parts.reduce(
     (chain, part) =>
       chain.then(
-        () =>
-          new Promise<void>((resolve, reject) => {
-            acc = acc === '/' ? `/${part}` : pathPosix.join(acc, part);
-            sftp.mkdir(acc, (err) => {
-              if (!err || /exists/i.test(err.message)) resolve();
-              else reject(err);
-            });
-          }),
+        async () => {
+          acc = acc === '/' ? `/${part}` : pathPosix.join(acc, part);
+          await sftpEnsureDir(sftp, acc);
+        },
       ),
     Promise.resolve(),
   );

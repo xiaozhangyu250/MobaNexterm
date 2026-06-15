@@ -1,54 +1,50 @@
 {
   "name": "mobanexterm",
   "version": "0.1.0",
-  "description": "A cross-platform, modern MobaXterm-like remote management tool for Linux and Windows",
+  "description": "A Linux-first SSH terminal and SFTP client built with Electron",
   "private": true,
   "author": "MobaNexterm",
   "license": "MIT",
+  "homepage": "https://mobanexterm.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mobanexterm/mobanexterm.git"
+  },
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "node scripts/run.cjs dev",
     "build": "electron-vite build",
     "preview": "node scripts/run.cjs preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "lint": "eslint --ext .ts,.tsx src",
+    "lint": "eslint src tests",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,json}\"",
     "test": "vitest run",
-    "test:e2e": "playwright test",
     "rebuild": "electron-builder install-app-deps",
-    "dist:linux": "pnpm build && electron-builder --linux AppImage deb",
-    "dist:win": "pnpm build && electron-builder --win nsis",
-    "dist:mac": "pnpm build && electron-builder --mac dmg",
+    "package:linux": "node scripts/package-linux.cjs",
+    "dist:linux": "node scripts/package-linux.cjs",
     "postinstall": "node scripts/setup-bin-shims.cjs && (electron-builder install-app-deps || true)"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "^2.2.4",
     "@radix-ui/react-dialog": "^1.1.4",
-    "@radix-ui/react-tabs": "^1.1.2",
-    "@radix-ui/react-tooltip": "^1.1.6",
     "@xterm/addon-fit": "^0.10.0",
-    "@xterm/addon-search": "^0.15.0",
-    "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/addon-web-links": "^0.11.0",
-    "@xterm/addon-webgl": "^0.18.0",
     "@xterm/xterm": "^5.5.0",
     "clsx": "^2.1.1",
     "electron-log": "^5.2.4",
     "electron-store": "^8.2.0",
-    "i18next": "^24.0.0",
     "lucide-react": "^0.460.0",
     "react": "^18.3.1",
-    "react-arborist": "^3.4.0",
     "react-dom": "^18.3.1",
-    "react-dropzone": "^14.3.5",
-    "react-i18next": "^15.1.0",
     "ssh2": "^1.16.0",
     "tailwind-merge": "^2.5.5",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.49.0",
-    "@testing-library/react": "^16.1.0",
+    "@eslint/js": "^9.39.4",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -63,22 +59,12 @@
     "eslint": "^9.16.0",
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^15.2.10",
+    "globals": "^14.0.0",
     "postcss": "^8.4.49",
     "prettier": "^3.4.1",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.7.2",
     "vite": "^5.4.11",
     "vitest": "^2.1.6"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,css,md}": [
-      "prettier --write"
-    ]
   }
 }

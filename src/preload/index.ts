@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webFrame, webUtils, type IpcRendererEvent } from 'electron';
 import { Channels } from '../main/utils/channels';
 import type { IpcApi, IpcEventMap, IpcEventName, NewSessionInput } from '@shared/types/ipc';
 
@@ -11,6 +11,7 @@ const api: IpcApi = {
     maximize: () => ipcRenderer.invoke(Channels.App.Maximize),
     close: () => ipcRenderer.invoke(Channels.App.Close),
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
+    setZoomFactor: (factor: number) => webFrame.setZoomFactor(factor),
   },
   session: {
     list: () => ipcRenderer.invoke(Channels.Session.List),

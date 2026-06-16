@@ -71,6 +71,7 @@ export function Terminal({ tabId }: TerminalProps) {
   const reconnectTab = useTerminalStore((s) => s.reconnectTab);
   const terminalFontSize = useSettingsStore((s) => s.terminalFontSize);
   const theme = useSettingsStore((s) => s.theme);
+  const uiScale = useSettingsStore((s) => s.uiScale);
   const initialFontSize = useRef(terminalFontSize);
   const initialTheme = useRef(theme);
   const statusRef = useRef<TabStatus>(tab?.status ?? 'connecting');
@@ -189,13 +190,16 @@ export function Terminal({ tabId }: TerminalProps) {
     if (!term) return;
     term.options.fontSize = terminalFontSize;
     term.options.theme = theme === 'dark' ? xtermTheme : xtermLightTheme;
-    try {
-      fitRef.current?.fit();
-      void window.api.ssh.resize(tabId, term.cols, term.rows);
-    } catch {
-      // ignore during setup and teardown
-    }
-  }, [tabId, terminalFontSize, theme]);
+    const frame = window.requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit();
+        void window.api.ssh.resize(tabId, term.cols, term.rows);
+      } catch {
+        // ignore during setup and teardown
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [tabId, terminalFontSize, theme, uiScale]);
 
   useEffect(() => {
     termRef.current?.focus();

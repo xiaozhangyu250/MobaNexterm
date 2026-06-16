@@ -57,7 +57,8 @@ export function App() {
   }, [language]);
 
   useEffect(() => {
-    document.body.style.zoom = `${uiScale}%`;
+    document.body.style.removeProperty('zoom');
+    window.api.app.setZoomFactor(uiScale / 100);
   }, [uiScale]);
 
   return (

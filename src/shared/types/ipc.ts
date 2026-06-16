@@ -35,6 +35,7 @@ export interface IpcApi {
     maximize(): Promise<void>;
     close(): Promise<void>;
     getPathForFile(file: File): string;
+    setZoomFactor(factor: number): void;
   };
   session: {
     list(): Promise<Session[]>;

@@ -106,7 +106,7 @@ export function SessionDialog() {
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in" />
         <Dialog.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-[440px] -translate-x-1/2 -translate-y-1/2',
+            'fixed left-1/2 top-1/2 z-50 w-[440px] max-w-[calc(100vw-32px)] max-h-[calc(100vh-32px)] overflow-y-auto -translate-x-1/2 -translate-y-1/2',
             'rounded-lg border border-border bg-bg-elevated p-5 text-text shadow-overlay',
             'focus:outline-none',
           )}
@@ -215,7 +215,11 @@ export function SessionDialog() {
                 disabled={submitting}
                 className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition hover:bg-accent/90 disabled:opacity-50"
               >
-                {submitting ? t('session.saving') : editing ? t('session.save') : t('session.create')}
+                {submitting
+                  ? t('session.saving')
+                  : editing
+                    ? t('session.save')
+                    : t('session.create')}
               </button>
             </div>
           </form>

@@ -5,6 +5,24 @@ import { logger } from './services/Logger';
 import { SSHClient } from './services/SSHClient';
 import { APP_ID } from '@shared/constants';
 
+// Keep a strong reference to the window for its entire native lifetime. Without
+// this, the BrowserWindow wrapper can be garbage-collected after creation,
+// closing the only window and causing the application to quit on Linux/Windows.
+let mainWindow: BrowserWindow | null = null;
+
+function openMainWindow(): BrowserWindow {
+  if (mainWindow && !mainWindow.isDestroyed()) return mainWindow;
+
+  const win = createMainWindow();
+  mainWindow = win;
+  const ownerId = win.webContents.id;
+  win.once('closed', () => {
+    SSHClient.disconnectOwner(ownerId);
+    if (mainWindow === win) mainWindow = null;
+  });
+  return win;
+}
+
 if (process.platform === 'win32') {
   app.setAppUserModelId(APP_ID);
 }
@@ -15,20 +33,21 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = mainWindow;
     if (win) {
       if (win.isMinimized()) win.restore();
+      if (!win.isVisible()) win.show();
       win.focus();
     }
   });
 
   app.whenReady().then(() => {
     registerAllIpc();
-    createMainWindow();
+    openMainWindow();
     logger.info('[main] ready');
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
+      openMainWindow();
     });
   });
 
@@ -36,7 +55,7 @@ if (!gotLock) {
     if (process.platform !== 'darwin') app.quit();
   });
 
-  app.on('before-quit', () => {
+  app.on('will-quit', () => {
     SSHClient.disconnectAll();
   });
 }

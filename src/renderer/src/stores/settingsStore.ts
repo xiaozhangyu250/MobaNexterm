@@ -8,6 +8,8 @@ export interface AppSettings {
   language: Language;
   uiScale: number;
   terminalFontSize: number;
+  reconnectToLastDirectory: boolean;
+  shellIntegration: boolean;
 }
 
 interface SettingsState extends AppSettings {
@@ -15,6 +17,8 @@ interface SettingsState extends AppSettings {
   setLanguage: (language: Language) => void;
   setUiScale: (scale: number) => void;
   setTerminalFontSize: (size: number) => void;
+  setReconnectToLastDirectory: (enabled: boolean) => void;
+  setShellIntegration: (enabled: boolean) => void;
   reset: () => void;
 }
 
@@ -22,9 +26,11 @@ const STORAGE_KEY = 'mobanexterm.settings';
 
 export const defaultSettings: AppSettings = {
   theme: 'dark',
-  language: 'en',
+  language: navigator.language.startsWith('zh') ? 'zh' : 'en',
   uiScale: 100,
   terminalFontSize: 13,
+  reconnectToLastDirectory: true,
+  shellIntegration: true,
 };
 
 function readSettings(): AppSettings {
@@ -33,6 +39,7 @@ function readSettings(): AppSettings {
     if (!raw) return defaultSettings;
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     return {
+      shellIntegration: parsed.shellIntegration !== false,
       theme: parsed.theme === 'light' ? 'light' : 'dark',
       language: parsed.language === 'zh' ? 'zh' : 'en',
       uiScale: clampNumber(parsed.uiScale, 80, 125, defaultSettings.uiScale),
@@ -42,6 +49,10 @@ function readSettings(): AppSettings {
         20,
         defaultSettings.terminalFontSize,
       ),
+      reconnectToLastDirectory:
+        typeof parsed.reconnectToLastDirectory === 'boolean'
+          ? parsed.reconnectToLastDirectory
+          : defaultSettings.reconnectToLastDirectory,
     };
   } catch {
     return defaultSettings;
@@ -81,15 +92,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   setTerminalFontSize(terminalFontSize) {
-    const nextSize = clampNumber(
-      terminalFontSize,
-      11,
-      20,
-      defaultSettings.terminalFontSize,
-    );
+    const nextSize = clampNumber(terminalFontSize, 11, 20, defaultSettings.terminalFontSize);
     const next = { ...get(), terminalFontSize: nextSize };
     persist(next);
     set({ terminalFontSize: nextSize });
+  },
+
+  setReconnectToLastDirectory(reconnectToLastDirectory) {
+    const next = { ...get(), reconnectToLastDirectory };
+    persist(next);
+    set({ reconnectToLastDirectory });
+  },
+
+  setShellIntegration(shellIntegration) {
+    persist({ ...get(), shellIntegration });
+    set({ shellIntegration });
   },
 
   reset() {

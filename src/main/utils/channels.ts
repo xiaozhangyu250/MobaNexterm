@@ -9,6 +9,9 @@ export const Channels = {
     Minimize: 'app:minimize',
     Maximize: 'app:maximize',
     Close: 'app:close',
+    Fullscreen: 'app:fullscreen',
+    OpenEditor: 'app:open-editor',
+    ShowItemInFolder: 'app:show-item-in-folder',
   },
   Session: {
     List: 'session:list',
@@ -19,6 +22,7 @@ export const Channels = {
   Ssh: {
     Connect: 'ssh:connect',
     Write: 'ssh:write',
+    Acknowledge: 'ssh:acknowledge',
     Resize: 'ssh:resize',
     Disconnect: 'ssh:disconnect',
     DataEvent: 'ssh:data',
@@ -31,6 +35,7 @@ export const Channels = {
     Upload: 'sftp:upload',
     UploadPaths: 'sftp:upload-paths',
     Download: 'sftp:download',
+    DownloadArchive: 'sftp:download-archive',
     Mkdir: 'sftp:mkdir',
     Remove: 'sftp:remove',
     Rename: 'sftp:rename',

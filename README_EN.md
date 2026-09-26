@@ -11,6 +11,14 @@ The project is built with Electron, React, TypeScript, xterm.js, and ssh2. It is
 > [!WARNING]
 > File operations directly modify the remote host. Before uploading, overwriting, renaming, changing permissions, or deleting files in production, verify the target path and back up important data.
 
+## Workspace reliability update
+
+The workspace now includes streaming UTF-8 decoding, PTY sizing and output flow control, terminal search, automatic directory refresh, independent editor windows with find/replace and conflict-aware atomic saves, session filtering, a resizable sidebar and display recovery.
+
+Run `npm run check` for the engineering checks and `npm run test:electron` for the isolated Electron + loopback SSH/SFTP regression. Bash/Zsh directory integration is enabled by default and installs a prompt hook at connection time. SSH settings can disable it; changes require reconnecting. Saved opt-outs are preserved, with an enable-and-reconnect action in the file panel. File refresh works independently. Safe editor saves require the OpenSSH atomic-rename extension.
+
+See [implementation and validation](doc/engineering/VALIDATION.md) and [roadmap](doc/engineering/PLAN.md) for tested scope and remaining release checks.
+
 ## Preview
 
 ![MobaNexterm terminal and SSH file browser](doc/img/截图%202026-06-15%2020-33-00.png)

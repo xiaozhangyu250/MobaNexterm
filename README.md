@@ -11,9 +11,21 @@ MobaNexterm 是一款面向 Linux 桌面的开源 SSH 终端与 SFTP 文件管�
 > [!WARNING]
 > 文件管理功能会直接操作远程主机。在生产环境中使用上传、覆盖、重命名、修改权限或删除功能前，请确认目标路径并备份重要数据。
 
+## 本轮工作台改造
+
+已加入终端 Unicode 与流控修复、自动文件刷新、可移动的独立远程编辑器（搜索/替换与冲突保护）、终端搜索、会话筛选、可调侧栏和多屏窗口恢复。
+
+- [开发规划与后续功能](doc/engineering/PLAN.md)
+- [实现范围、测试命令与人工验收矩阵](doc/engineering/VALIDATION.md)
+- `npm run check` 执行完整工程检查；`npm run test:electron` 运行隔离的桌面与 SSH/SFTP 回归测试。
+- Bash/Zsh 目录集成默认开启，在连接时安装目录报告钩子；可在“设置 → SSH”关闭，修改后需重连。已保存的关闭设置会保留，文件面板提供启用并重连入口；文件自动刷新独立生效。
+- 编辑器安全保存要求服务器支持 OpenSSH 原子重命名；不支持时保留原文件并提示。
+
 ## 界面预览
 
-![MobaNexterm 终端与 SSH 文件浏览器](doc/img/截图%202026-06-15%2020-33-00.png)
+![MobaNexterm 工作台](doc/img/workspace-redesign.png)
+
+![独立远程编辑器与搜索替换](doc/img/editor-redesign.png)
 
 <details>
 <summary>查看更多界面截图</summary>
@@ -244,7 +256,7 @@ doc/img/      文档截图
 
 ## 当前范围
 
-当前版本专注于 Linux 上的 SSH 终端和 SFTP 工作流。Windows/macOS 安装包、会话分组、SSH Agent 图形配置、跳板机、端口转发和远程文件编辑器尚未作为稳定功能提供。
+当前版本专注于 Linux 上的 SSH 终端和 SFTP 工作流。Windows/macOS 安装包、会话分组、SSH Agent 图形配置、跳板机、端口转发尚未作为稳定功能提供。独立远程文本编辑器已提供，其兼容范围见验收文档。
 
 ## 参与贡献
 

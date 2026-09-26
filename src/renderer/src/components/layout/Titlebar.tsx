@@ -22,7 +22,7 @@ export function Titlebar({ onOpenQuickConnect, onOpenSettings }: TitlebarProps) 
   return (
     <div
       className={cn(
-        'titlebar-drag flex h-9 shrink-0 items-center gap-3 border-b border-border bg-bg-overlay px-3',
+        'titlebar-drag flex h-12 shrink-0 items-center gap-3 border-b border-border bg-bg-overlay px-3',
         'backdrop-blur-2xl',
       )}
       style={{
@@ -45,7 +45,9 @@ export function Titlebar({ onOpenQuickConnect, onOpenSettings }: TitlebarProps) 
       >
         <Search className="h-3.5 w-3.5" />
         <span className="flex-1 text-left">{t('title.quickConnect')}</span>
-        <kbd className="rounded bg-bg px-1.5 py-0.5 text-[10px] text-text-muted">⌘K</kbd>
+        <kbd className="rounded bg-bg px-1.5 py-0.5 text-[10px] text-text-muted">
+          {isMac ? '⌘⇧K' : 'Ctrl+Shift+K'}
+        </kbd>
       </button>
 
       <button
@@ -58,14 +60,18 @@ export function Titlebar({ onOpenQuickConnect, onOpenSettings }: TitlebarProps) 
       </button>
 
       {!isMac ? (
-        <div className="titlebar-no-drag -mr-3 ml-1 flex h-9 items-stretch">
+        <div className="titlebar-no-drag -mr-3 ml-1 flex h-12 items-stretch">
           <WindowButton label={t('common.minimize')} onClick={() => void window.api.app.minimize()}>
             <Minus className="h-4 w-4" />
           </WindowButton>
           <WindowButton label={t('common.maximize')} onClick={() => void window.api.app.maximize()}>
             <Maximize2 className="h-3.5 w-3.5" />
           </WindowButton>
-          <WindowButton label={t('common.close')} onClick={() => void window.api.app.close()} danger>
+          <WindowButton
+            label={t('common.close')}
+            onClick={() => void window.api.app.close()}
+            danger
+          >
             <X className="h-4 w-4" />
           </WindowButton>
         </div>

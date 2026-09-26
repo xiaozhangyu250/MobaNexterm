@@ -26,6 +26,12 @@ export interface NewSessionInput {
 
 export type Language = 'en' | 'zh';
 
+export interface TerminalConnectOptions {
+  cols: number;
+  rows: number;
+  shellIntegration?: boolean;
+}
+
 export interface IpcApi {
   app: {
     ping(): Promise<'pong'>;
@@ -34,6 +40,9 @@ export interface IpcApi {
     minimize(): Promise<void>;
     maximize(): Promise<void>;
     close(): Promise<void>;
+    fullscreen(): Promise<void>;
+    openEditor(tabId: string, path: string): Promise<void>;
+    showItemInFolder(path: string): Promise<void>;
     getPathForFile(file: File): string;
     setZoomFactor(factor: number): void;
   };
@@ -45,13 +54,19 @@ export interface IpcApi {
   };
   ssh: {
     /** Connects or reconnects the renderer-owned tab and resolves after the shell + SFTP handshake. */
-    connect(sessionId: string, tabId: string): Promise<{
+    connect(
+      sessionId: string,
+      tabId: string,
+      reconnectCwd?: string,
+      options?: TerminalConnectOptions,
+    ): Promise<{
       sftpAvailable: boolean;
       sftpMessage?: string;
     }>;
     write(tabId: string, data: string): Promise<void>;
     resize(tabId: string, cols: number, rows: number): Promise<void>;
     disconnect(tabId: string): Promise<void>;
+    acknowledge(tabId: string, connectionId: string, size: number): void;
   };
   sftp: {
     list(tabId: string, path: string): Promise<SftpListEntry[]>;
@@ -60,20 +75,33 @@ export interface IpcApi {
     remove(tabId: string, path: string, kind: 'file' | 'directory'): Promise<void>;
     rename(tabId: string, fromPath: string, toPath: string): Promise<void>;
     chmod(tabId: string, path: string, mode: number): Promise<void>;
+    readFile(tabId: string, path: string): Promise<string>;
+    writeFile(tabId: string, path: string, content: string, expected: string): Promise<void>;
     /** Opens a native file picker and uploads into `remoteDir`. */
     upload(tabId: string, remoteDir: string): Promise<void>;
     /** Uploads explicit local filesystem paths into `remoteDir`. */
     uploadPaths(tabId: string, remoteDir: string, localPaths: string[]): Promise<void>;
     /** Opens a save/folder dialog and downloads a remote file or directory. */
     download(tabId: string, remotePath: string, kind?: 'file' | 'directory'): Promise<void>;
+    /** Creates a remote archive first, then downloads the archive locally. */
+    downloadArchive(
+      tabId: string,
+      remotePath: string,
+      format: 'zip' | 'tar.gz',
+      sudoPassword?: string,
+    ): Promise<void>;
   };
 }
 
 // Events emitted from main → renderer.
 export interface IpcEventMap {
-  'ssh:data': { tabId: string; data: string };
+  'ssh:data': { tabId: string; data: string; connectionId: string };
   'ssh:cwd': { tabId: string; cwd: string };
-  'ssh:status': { tabId: string; status: 'connecting' | 'connected' | 'closed' | 'error'; message?: string };
+  'ssh:status': {
+    tabId: string;
+    status: 'connecting' | 'connected' | 'closed' | 'error';
+    message?: string;
+  };
   'sftp:status': { tabId: string; available: boolean; message?: string };
   'sftp:progress': {
     taskId: string;
@@ -82,14 +110,22 @@ export interface IpcEventMap {
     total: number;
     label?: string;
     direction?: 'upload' | 'download';
+    localPath?: string;
   };
-  'sftp:done': { taskId: string; tabId?: string; label?: string; direction?: 'upload' | 'download' };
+  'sftp:done': {
+    taskId: string;
+    tabId?: string;
+    label?: string;
+    direction?: 'upload' | 'download';
+    localPath?: string;
+  };
   'sftp:error': {
     taskId: string;
     tabId?: string;
     message: string;
     label?: string;
     direction?: 'upload' | 'download';
+    localPath?: string;
   };
 }
 

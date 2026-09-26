@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --bg: #0d0e10;
-  --bg-elevated: #16181c;
-  --bg-overlay: rgba(22, 24, 28, 0.72);
-  --border: #26282d;
+  --bg: #10151e;
+  --bg-elevated: #171f2b;
+  --bg-overlay: #141b26;
+  --border: #293345;
   --text: #e6e7e9;
-  --text-muted: #8b8d93;
+  --text-muted: #98a6bb;
   --accent: #5b9dff;
   --success: #3ecf8e;
   --danger: #ff5a5a;
@@ -50,13 +50,13 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text-muted) 28%, transparent);
   border-radius: 8px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--text-muted) 45%, transparent);
   background-clip: padding-box;
   border: 2px solid transparent;
 }
@@ -68,3 +68,13 @@ body {
 .titlebar-no-drag {
   -webkit-app-region: no-drag;
 }
+
+.xterm {
+  height: 100%;
+  min-width: 0;
+}
+
+/* Never constrain xterm's measured cell grid with CSS scaling/max-width. */
+.workspace-welcome { background: radial-gradient(ellipse at 75% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%); }
+button:focus-visible, [role='button']:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input, textarea { user-select: text; }

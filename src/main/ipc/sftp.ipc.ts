@@ -1,5 +1,5 @@
 import { dialog, BrowserWindow, ipcMain } from 'electron';
-import { basename, posix as pathPosix } from 'node:path';
+import { basename, join as pathJoin, posix as pathPosix } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { SSHClient } from '../services/SSHClient';
 import { Channels } from '../utils/channels';
@@ -26,6 +26,7 @@ async function uploadLocalPaths(tabId: string, remoteDir: string, localPaths: st
         total: 0,
         label,
         direction: 'upload',
+        localPath,
       });
       await SSHClient.sftpUploadRecursive(tabId, localPath, remoteDir, (transferred, total) => {
         send(Channels.Sftp.ProgressEvent, {
@@ -35,12 +36,13 @@ async function uploadLocalPaths(tabId: string, remoteDir: string, localPaths: st
           total,
           label,
           direction: 'upload',
+          localPath,
         });
       });
-      send(Channels.Sftp.DoneEvent, { taskId, tabId, label, direction: 'upload' });
+      send(Channels.Sftp.DoneEvent, { taskId, tabId, label, direction: 'upload', localPath });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      send(Channels.Sftp.ErrorEvent, { taskId, tabId, message, label, direction: 'upload' });
+      send(Channels.Sftp.ErrorEvent, { taskId, tabId, message, label, direction: 'upload', localPath });
       throw err;
     }
   }
@@ -64,6 +66,12 @@ export function registerSftpIpc(): void {
   );
   ipcMain.handle(Channels.Sftp.Chmod, (_e, tabId: string, remotePath: string, mode: number) =>
     SSHClient.sftpChmod(tabId, remotePath, mode),
+  );
+  ipcMain.handle(Channels.Sftp.ReadFile, (_e, tabId: string, remotePath: string) =>
+    SSHClient.sftpReadFile(tabId, remotePath),
+  );
+  ipcMain.handle(Channels.Sftp.WriteFile, (_e, tabId: string, remotePath: string, content: string, expected: string) =>
+    SSHClient.sftpWriteFile(tabId, remotePath, content, expected),
   );
 
   ipcMain.handle(Channels.Sftp.Upload, async (_e, tabId: string, remoteDir: string) => {
@@ -105,6 +113,7 @@ export function registerSftpIpc(): void {
 
     const taskId = randomUUID();
     const label = suggested;
+    let localPath: string | undefined;
     try {
       send(Channels.Sftp.ProgressEvent, {
         taskId,
@@ -113,10 +122,12 @@ export function registerSftpIpc(): void {
         total: 0,
         label,
         direction: 'download',
+        localPath,
       });
       if (kind === 'directory') {
         const localParent = 'filePaths' in picker ? picker.filePaths[0] : undefined;
         if (!localParent) return;
+        localPath = pathJoin(localParent, suggested);
         await SSHClient.sftpDownloadRecursive(tabId, remotePath, localParent, (transferred, total) => {
           send(Channels.Sftp.ProgressEvent, {
             taskId,
@@ -125,11 +136,13 @@ export function registerSftpIpc(): void {
             total,
             label,
             direction: 'download',
+            localPath,
           });
         });
       } else {
         const filePath = 'filePath' in picker ? picker.filePath : undefined;
         if (!filePath) return;
+        localPath = filePath;
         await SSHClient.sftpFastGet(tabId, remotePath, filePath, (transferred, total) => {
           send(Channels.Sftp.ProgressEvent, {
             taskId,
@@ -138,15 +151,73 @@ export function registerSftpIpc(): void {
             total,
             label,
             direction: 'download',
+            localPath,
           });
         });
       }
-      send(Channels.Sftp.DoneEvent, { taskId, tabId, label, direction: 'download' });
+      send(Channels.Sftp.DoneEvent, { taskId, tabId, label, direction: 'download', localPath });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      send(Channels.Sftp.ErrorEvent, { taskId, tabId, message, label, direction: 'download' });
+      send(Channels.Sftp.ErrorEvent, { taskId, tabId, message, label, direction: 'download', localPath });
       throw err;
     }
+    },
+  );
+
+  ipcMain.handle(
+    Channels.Sftp.DownloadArchive,
+    async (
+      _e,
+      tabId: string,
+      remotePath: string,
+      format: 'zip' | 'tar.gz',
+      sudoPassword?: string,
+    ) => {
+      const win = focusedWindow();
+      if (!win) throw new Error('No window for file dialog');
+      const suggested = `${pathPosix.basename(remotePath) || 'download'}.${format}`;
+      const picker = await dialog.showSaveDialog(win, {
+        title: 'Pack and download remote directory',
+        defaultPath: suggested,
+      });
+      if (picker.canceled || !picker.filePath) return;
+
+      const taskId = randomUUID();
+      const label = suggested;
+      let archivePath: string | null = null;
+      try {
+        send(Channels.Sftp.ProgressEvent, {
+          taskId,
+          tabId,
+          transferred: 0,
+          total: 0,
+          label,
+          direction: 'download',
+          localPath: picker.filePath,
+        });
+        const archive = await SSHClient.createRemoteArchive(tabId, remotePath, format, sudoPassword);
+        archivePath = archive.remoteArchivePath;
+        await SSHClient.sftpFastGet(tabId, archive.remoteArchivePath, picker.filePath, (transferred, total) => {
+          send(Channels.Sftp.ProgressEvent, {
+            taskId,
+            tabId,
+            transferred,
+            total,
+            label,
+            direction: 'download',
+            localPath: picker.filePath,
+          });
+        });
+        send(Channels.Sftp.DoneEvent, { taskId, tabId, label, direction: 'download', localPath: picker.filePath });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        send(Channels.Sftp.ErrorEvent, { taskId, tabId, message, label, direction: 'download', localPath: picker.filePath });
+        throw err;
+      } finally {
+        if (archivePath) {
+          await SSHClient.removeRemoteFile(tabId, archivePath, sudoPassword).catch(() => undefined);
+        }
+      }
     },
   );
 }

@@ -49,9 +49,10 @@ export function TerminalTabs() {
         {tabs.map((t) => (
           <div
             key={t.id}
+            aria-hidden={activeId !== t.id}
             className={cn(
               'absolute inset-0 flex min-h-0 flex-col',
-              activeId === t.id ? 'opacity-100' : 'pointer-events-none opacity-0',
+              activeId === t.id ? 'visible' : 'invisible pointer-events-none',
             )}
           >
             <div className="min-h-0 flex-1">
@@ -65,8 +66,7 @@ export function TerminalTabs() {
 }
 
 function StatusDot({ status }: { status: TabStatus }) {
-  if (status === 'connecting')
-    return <Loader2 className="h-3 w-3 animate-spin text-text-muted" />;
+  if (status === 'connecting') return <Loader2 className="h-3 w-3 animate-spin text-text-muted" />;
   if (status === 'connected') return <CheckCircle2 className="h-3 w-3 text-success" />;
   if (status === 'error') return <AlertCircle className="h-3 w-3 text-danger" />;
   return <span className="h-1.5 w-1.5 rounded-full bg-text-muted" />;

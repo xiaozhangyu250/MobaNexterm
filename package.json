@@ -1,6 +1,6 @@
 {
   "name": "mobanexterm",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Linux-first SSH terminal and SFTP client built with Electron",
   "private": true,
   "author": "MobaNexterm",
@@ -22,7 +22,9 @@
     "rebuild": "electron-builder install-app-deps",
     "package:linux": "node scripts/package-linux.cjs",
     "dist:linux": "node scripts/package-linux.cjs",
-    "postinstall": "node scripts/setup-bin-shims.cjs && (electron-builder install-app-deps || true)"
+    "postinstall": "node scripts/setup-bin-shims.cjs && (electron-builder install-app-deps || true)",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build",
+    "test:electron": "npm run build && node tests/electron/smoke.cjs"
   },
   "engines": {
     "node": ">=20"
@@ -31,6 +33,8 @@
     "@radix-ui/react-context-menu": "^2.2.4",
     "@radix-ui/react-dialog": "^1.1.4",
     "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-search": "^0.15.0",
+    "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
     "clsx": "^2.1.1",
@@ -60,6 +64,7 @@
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.0.0",
     "globals": "^14.0.0",
+    "playwright-core": "^1.51.1",
     "postcss": "^8.4.49",
     "prettier": "^3.4.1",
     "tailwindcss": "^3.4.15",

@@ -1,10 +1,21 @@
+import type { TerminalConnectOptions } from '@shared/types/ipc';
 import { ipcMain } from 'electron';
 import { SSHClient } from '../services/SSHClient';
 import { Channels } from '../utils/channels';
 
 export function registerSshIpc(): void {
-  ipcMain.handle(Channels.Ssh.Connect, (_e, sessionId: string, tabId: string) =>
-    SSHClient.connect(sessionId, tabId),
+  ipcMain.handle(
+    Channels.Ssh.Connect,
+    (
+      event,
+      sessionId: string,
+      tabId: string,
+      reconnectCwd?: string,
+      options?: TerminalConnectOptions,
+    ) => SSHClient.connect(sessionId, tabId, reconnectCwd, options, event.sender.id),
+  );
+  ipcMain.on(Channels.Ssh.Acknowledge, (event, tabId: string, connectionId: string, size: number) =>
+    SSHClient.acknowledge(tabId, connectionId, size, event.sender.id),
   );
   ipcMain.handle(Channels.Ssh.Write, (_e, tabId: string, data: string) =>
     SSHClient.write(tabId, data),

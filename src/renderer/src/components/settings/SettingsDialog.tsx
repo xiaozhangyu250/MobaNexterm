@@ -9,11 +9,15 @@ import { useUiStore } from '@/stores/uiStore';
 
 type Category = 'appearance' | 'terminal' | 'ssh' | 'transfer';
 
-const categories: { id: Category; labelKey: Parameters<ReturnType<typeof useI18n>>[0]; icon: React.ReactNode; disabled?: boolean }[] = [
+const categories: {
+  id: Category;
+  labelKey: Parameters<ReturnType<typeof useI18n>>[0];
+  icon: React.ReactNode;
+  disabled?: boolean;
+}[] = [
   { id: 'appearance', labelKey: 'settings.appearance', icon: <Monitor className="h-4 w-4" /> },
   { id: 'terminal', labelKey: 'settings.terminal', icon: <Terminal className="h-4 w-4" /> },
-  { id: 'ssh', labelKey: 'settings.ssh', icon: <Settings className="h-4 w-4" />, disabled: true },
-  { id: 'transfer', labelKey: 'settings.transfer', icon: <Settings className="h-4 w-4" />, disabled: true },
+  { id: 'ssh', labelKey: 'settings.ssh', icon: <Settings className="h-4 w-4" /> },
 ];
 
 export function SettingsDialog() {
@@ -25,17 +29,21 @@ export function SettingsDialog() {
   const language = useSettingsStore((s) => s.language);
   const uiScale = useSettingsStore((s) => s.uiScale);
   const terminalFontSize = useSettingsStore((s) => s.terminalFontSize);
+  const reconnectToLastDirectory = useSettingsStore((s) => s.reconnectToLastDirectory);
   const setTheme = useSettingsStore((s) => s.setTheme);
   const setLanguage = useSettingsStore((s) => s.setLanguage);
   const setUiScale = useSettingsStore((s) => s.setUiScale);
   const setTerminalFontSize = useSettingsStore((s) => s.setTerminalFontSize);
+  const setReconnectToLastDirectory = useSettingsStore((s) => s.setReconnectToLastDirectory);
+  const shellIntegration = useSettingsStore((s) => s.shellIntegration);
+  const setShellIntegration = useSettingsStore((s) => s.setShellIntegration);
   const reset = useSettingsStore((s) => s.reset);
 
   return (
     <Dialog.Root open={open} onOpenChange={(next) => (!next ? close() : null)}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex h-[520px] w-[720px] max-w-[calc(100vw-48px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-border bg-bg text-text shadow-overlay outline-none">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex h-[520px] max-h-[calc(100vh-32px)] w-[720px] max-w-[calc(100vw-48px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-border bg-bg text-text shadow-overlay outline-none">
           <aside className="flex w-48 shrink-0 flex-col border-r border-border bg-bg-elevated/45">
             <div className="flex h-12 items-center gap-2 border-b border-border px-3">
               <Settings className="h-4 w-4 text-accent" />
@@ -88,7 +96,10 @@ export function SettingsDialog() {
                 <section>
                   <h2 className="text-sm font-semibold">{t('settings.appearance')}</h2>
                   <div className="mt-3 space-y-4">
-                    <SettingRow label={t('settings.theme')} value={theme === 'dark' ? t('settings.themeDark') : t('settings.themeLight')}>
+                    <SettingRow
+                      label={t('settings.theme')}
+                      value={theme === 'dark' ? t('settings.themeDark') : t('settings.themeLight')}
+                    >
                       <SegmentedControl
                         value={theme}
                         options={[
@@ -100,7 +111,9 @@ export function SettingsDialog() {
                     </SettingRow>
                     <SettingRow
                       label={t('settings.language')}
-                      value={language === 'zh' ? t('settings.languageZh') : t('settings.languageEn')}
+                      value={
+                        language === 'zh' ? t('settings.languageZh') : t('settings.languageEn')
+                      }
                     >
                       <SegmentedControl
                         value={language}
@@ -155,11 +168,39 @@ export function SettingsDialog() {
                 </section>
               ) : null}
 
-              {category === 'ssh' || category === 'transfer' ? (
+              {category === 'ssh' ? (
                 <section>
-                  <h2 className="text-sm font-semibold">
-                    {category === 'ssh' ? t('settings.ssh') : t('settings.transfer')}
-                  </h2>
+                  <h2 className="text-sm font-semibold">{t('settings.ssh')}</h2>
+                  <div className="mt-3 space-y-4">
+                    <SettingRow
+                      label={t('settings.shellIntegration')}
+                      value={t('settings.shellIntegrationHint')}
+                    >
+                      <Toggle
+                        checked={shellIntegration}
+                        onChange={setShellIntegration}
+                        label={t('settings.shellIntegration')}
+                      />
+                    </SettingRow>
+                    <SettingRow
+                      label={t('settings.reconnectToLastDirectory')}
+                      value={
+                        reconnectToLastDirectory ? t('settings.enabled') : t('settings.disabled')
+                      }
+                    >
+                      <Toggle
+                        checked={reconnectToLastDirectory}
+                        onChange={setReconnectToLastDirectory}
+                        label={t('settings.reconnectToLastDirectory')}
+                      />
+                    </SettingRow>
+                  </div>
+                </section>
+              ) : null}
+
+              {category === 'transfer' ? (
+                <section>
+                  <h2 className="text-sm font-semibold">{t('settings.transfer')}</h2>
                   <div className="mt-3 rounded-md border border-dashed border-border bg-bg-elevated/35 p-4 text-xs text-text-muted">
                     {t('settings.reserved')}
                   </div>
@@ -190,6 +231,37 @@ function SettingRow({
       </div>
       {children}
     </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        'relative h-6 w-11 rounded-full border transition',
+        checked ? 'border-accent bg-accent' : 'border-border bg-bg',
+      )}
+    >
+      <span
+        className={cn(
+          'absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white transition',
+          checked ? 'left-6' : 'left-1',
+        )}
+      />
+    </button>
   );
 }
 

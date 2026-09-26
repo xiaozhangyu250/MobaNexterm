@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { Server, Pencil, Trash2, Play } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
@@ -11,17 +12,25 @@ export function SessionTree() {
   const t = useI18n();
   const sessions = useSessionStore((s) => s.sessions);
 
+  const [filter, setFilter] = useState('');
+  const filtered = sessions.filter((s) =>
+    `${s.name} ${s.host} ${s.username}`.toLowerCase().includes(filter.toLowerCase()),
+  );
+
   if (sessions.length === 0) {
-    return (
-      <div className="px-3 py-2 text-xs text-text-muted">
-        {t('session.empty')}
-      </div>
-    );
+    return <div className="px-3 py-2 text-xs text-text-muted">{t('session.empty')}</div>;
   }
 
   return (
     <div className="space-y-0.5 px-2">
-      {sessions.map((s) => (
+      <input
+        aria-label={t('session.search')}
+        placeholder={t('session.search')}
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        className="mb-3 h-9 w-full rounded-lg border border-border bg-bg px-3 text-xs outline-none focus:border-accent"
+      />
+      {filtered.map((s) => (
         <SessionItem key={s.id} session={s} />
       ))}
     </div>
@@ -47,11 +56,11 @@ function SessionItem({ session }: { session: Session }) {
           type="button"
           onDoubleClick={connect}
           className={cn(
-            'group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-text-muted',
+            'group flex w-full items-center gap-2 rounded-lg px-3 py-3 text-left text-xs text-text-muted',
             'transition hover:bg-bg-elevated hover:text-text',
           )}
         >
-          <Server className="h-3.5 w-3.5 shrink-0" />
+          <Server className="h-4 w-4 shrink-0 text-accent" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-text">{session.name}</div>
             <div className="truncate text-[10px] text-text-muted">
@@ -76,18 +85,11 @@ function SessionItem({ session }: { session: Session }) {
           <Item icon={<Play className="h-3.5 w-3.5" />} onClick={connect}>
             {t('session.connect')}
           </Item>
-          <Item
-            icon={<Pencil className="h-3.5 w-3.5" />}
-            onClick={() => openDialog(session)}
-          >
+          <Item icon={<Pencil className="h-3.5 w-3.5" />} onClick={() => openDialog(session)}>
             {t('session.edit')}
           </Item>
           <ContextMenu.Separator className="my-1 h-px bg-border" />
-          <Item
-            icon={<Trash2 className="h-3.5 w-3.5" />}
-            danger
-            onClick={() => remove(session.id)}
-          >
+          <Item icon={<Trash2 className="h-3.5 w-3.5" />} danger onClick={() => remove(session.id)}>
             {t('common.delete')}
           </Item>
         </ContextMenu.Content>

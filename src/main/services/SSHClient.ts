@@ -1,7 +1,20 @@
+import { cwdIntegrationCommand } from '../terminal/cwdIntegration';
 import { Client, type ClientChannel, type SFTPWrapper, type FileEntryWithStats } from 'ssh2';
-import { mkdirSync, readFileSync, statSync, readdirSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+} from 'node:fs';
 import { basename, join as pathJoin, posix as pathPosix } from 'node:path';
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, webContents } from 'electron';
+import { randomUUID } from 'node:crypto';
+import { OutputFlow, TerminalDecoder, validTerminalSize } from '../terminal/protocol';
+import type { TerminalConnectOptions } from '@shared/types/ipc';
+import { readRemoteText, writeRemoteText } from './remoteText';
 import { SessionManager } from './SessionManager';
 import { logger } from './Logger';
 import { Channels } from '../utils/channels';
@@ -14,10 +27,32 @@ interface Tab {
   channel?: ClientChannel;
   sftp?: SFTPWrapper;
   cwd?: string;
-  cwdBuffer?: string;
+  cols: number;
+  rows: number;
+  connectionId: string;
+  ownerId?: number;
+  flow?: OutputFlow;
 }
 
 const tabs = new Map<string, Tab>();
+
+interface RemoteFile {
+  remotePath: string;
+  relativePath: string;
+  size: number;
+}
+
+interface RemoteSymlink {
+  remotePath: string;
+  relativePath: string;
+  target: string;
+}
+
+interface RemoteFileTree {
+  files: RemoteFile[];
+  dirs: string[];
+  symlinks: RemoteSymlink[];
+}
 
 function send(event: string, payload: unknown): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -44,53 +79,6 @@ function sendCwd(tabId: string, cwd: string): void {
   if (tab?.cwd === normalized) return;
   if (tab) tab.cwd = normalized;
   send(Channels.Ssh.CwdEvent, { tabId, cwd: normalized });
-}
-
-function parseOsc7Cwd(tabId: string, chunk: string): void {
-  const tab = tabs.get(tabId);
-  if (!tab) return;
-  const input = `${tab.cwdBuffer ?? ''}${chunk}`;
-  // OSC sequences are delimited by BEL or ESC followed by a backslash.
-  // eslint-disable-next-line no-control-regex
-  const osc7 = /\x1b\]7;([^\x07\x1b]+)(?:\x07|\x1b\\)/g;
-  let match: RegExpExecArray | null;
-  while ((match = osc7.exec(input)) !== null) {
-    const raw = match[1];
-    try {
-      const url = new URL(raw);
-      if (url.protocol === 'file:' && url.pathname) {
-        sendCwd(tabId, decodeURIComponent(url.pathname));
-      }
-    } catch {
-      if (raw.startsWith('file://')) {
-        const pathStart = raw.indexOf('/', 'file://'.length);
-        if (pathStart !== -1) sendCwd(tabId, raw.slice(pathStart));
-      }
-    }
-  }
-  tab.cwdBuffer = input.slice(-512);
-}
-
-function installCwdHook(stream: ClientChannel): void {
-  const script = [
-    "__mnl_emit_cwd(){ printf '\\033]7;file://%s%s\\007' \"$(hostname 2>/dev/null || printf remote)\" \"$PWD\"; }",
-    "if [ -n \"$ZSH_VERSION\" ]; then",
-    "  eval 'precmd_functions+=(__mnl_emit_cwd)'",
-    "elif [ -n \"$BASH_VERSION\" ]; then",
-    "  PROMPT_COMMAND=\"__mnl_emit_cwd${PROMPT_COMMAND:+;$PROMPT_COMMAND}\"",
-    "else",
-    "  cd(){ command cd \"$@\" && __mnl_emit_cwd; }",
-    "fi",
-    '__mnl_emit_cwd',
-  ].join('\n');
-
-  setTimeout(() => {
-    if (stream.destroyed) return;
-    stream.write('stty -echo 2>/dev/null\n');
-    setTimeout(() => {
-      if (!stream.destroyed) stream.write(`${script}\nstty echo 2>/dev/null\n`);
-    }, 60);
-  }, 250);
 }
 
 function entryToListItem(e: FileEntryWithStats): SftpListEntry {
@@ -160,17 +148,18 @@ function sftpMkdirp(sftp: SFTPWrapper, remotePath: string): Promise<void> {
 
   return parts.reduce(
     (chain, part) =>
-      chain.then(
-        async () => {
-          acc = acc === '/' ? `/${part}` : pathPosix.join(acc, part);
-          await sftpEnsureDir(sftp, acc);
-        },
-      ),
+      chain.then(async () => {
+        acc = acc === '/' ? `/${part}` : pathPosix.join(acc, part);
+        await sftpEnsureDir(sftp, acc);
+      }),
     Promise.resolve(),
   );
 }
 
-function sftpStat(sftp: SFTPWrapper, remotePath: string): Promise<{ isDirectory: boolean; size: number }> {
+function sftpStat(
+  sftp: SFTPWrapper,
+  remotePath: string,
+): Promise<{ isDirectory: boolean; size: number }> {
   return new Promise((resolve, reject) => {
     sftp.stat(remotePath, (err, attrs) => {
       if (err) {
@@ -186,14 +175,27 @@ function sftpStat(sftp: SFTPWrapper, remotePath: string): Promise<{ isDirectory:
   });
 }
 
+function sftpReadlink(sftp: SFTPWrapper, remotePath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    sftp.readlink(remotePath, (err, target) => {
+      if (err) reject(err);
+      else resolve(target);
+    });
+  });
+}
+
 async function collectRemoteFiles(
   sftp: SFTPWrapper,
   remotePath: string,
   relativeBase = '',
-): Promise<{ files: { remotePath: string; relativePath: string; size: number }[]; dirs: string[] }> {
+): Promise<RemoteFileTree> {
   const stat = await sftpStat(sftp, remotePath);
   if (!stat.isDirectory) {
-    return { files: [{ remotePath, relativePath: relativeBase || basename(remotePath), size: stat.size }], dirs: [] };
+    return {
+      files: [{ remotePath, relativePath: relativeBase || basename(remotePath), size: stat.size }],
+      dirs: [],
+      symlinks: [],
+    };
   }
 
   const entries = await new Promise<FileEntryWithStats[]>((resolve, reject) => {
@@ -203,31 +205,99 @@ async function collectRemoteFiles(
     });
   });
   const dirs = [relativeBase].filter(Boolean);
-  const files: { remotePath: string; relativePath: string; size: number }[] = [];
+  const files: RemoteFile[] = [];
+  const symlinks: RemoteSymlink[] = [];
 
   for (const entry of entries) {
     const item = entryToListItem(entry);
     const nextRemote = pathPosix.join(remotePath, entry.filename);
-    const nextRelative = relativeBase ? pathPosix.join(relativeBase, entry.filename) : entry.filename;
-    if (item.isDirectory) {
+    const nextRelative = relativeBase
+      ? pathPosix.join(relativeBase, entry.filename)
+      : entry.filename;
+    if (item.isSymlink) {
+      symlinks.push({
+        remotePath: nextRemote,
+        relativePath: nextRelative,
+        target: await sftpReadlink(sftp, nextRemote),
+      });
+    } else if (item.isDirectory) {
       const child = await collectRemoteFiles(sftp, nextRemote, nextRelative);
       dirs.push(...child.dirs);
       files.push(...child.files);
-    } else if (!item.isSymlink) {
+      symlinks.push(...child.symlinks);
+    } else {
       files.push({ remotePath: nextRemote, relativePath: nextRelative, size: item.size });
     }
   }
 
-  return { files, dirs };
+  return { files, dirs, symlinks };
+}
+
+function assertLocalFileSize(localPath: string, expectedSize: number): void {
+  const actualSize = statSync(localPath).size;
+  if (actualSize !== expectedSize) {
+    throw new Error(
+      `Downloaded file size mismatch: ${localPath} expected ${expectedSize} bytes, got ${actualSize}`,
+    );
+  }
+}
+
+async function assertRemoteFileSize(
+  sftp: SFTPWrapper,
+  remotePath: string,
+  expectedSize: number,
+): Promise<void> {
+  const stat = await sftpStat(sftp, remotePath);
+  if (stat.size !== expectedSize) {
+    throw new Error(
+      `Uploaded file size mismatch: ${remotePath} expected ${expectedSize} bytes, got ${stat.size}`,
+    );
+  }
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function archiveName(remotePath: string, format: 'zip' | 'tar.gz'): string {
+  const name = basename(remotePath) || 'download';
+  return `${name}.${format}`;
+}
+
+function remoteArchivePath(remotePath: string, format: 'zip' | 'tar.gz'): string {
+  const safeName = (basename(remotePath) || 'download').replace(/[^A-Za-z0-9._-]+/g, '_');
+  return pathPosix.join('/tmp', `mobanexterm-${Date.now()}-${safeName}.${format}`);
+}
+
+function archiveCommand(remotePath: string, archivePath: string, format: 'zip' | 'tar.gz'): string {
+  const parent = pathPosix.dirname(remotePath);
+  const name = basename(remotePath);
+  if (!name) throw new Error(`Cannot archive remote root path: ${remotePath}`);
+  if (format === 'zip') {
+    return `cd ${shellQuote(parent)} && zip -r ${shellQuote(archivePath)} ${shellQuote(name)}`;
+  }
+  return `cd ${shellQuote(parent)} && tar -czf ${shellQuote(archivePath)} ${shellQuote(name)}`;
+}
+
+function sudoCommand(command: string): string {
+  return `sudo -S -p '' sh -c ${shellQuote(command)}`;
 }
 
 function collectLocalFiles(
   localPath: string,
   relativeBase = basename(localPath),
-): { files: { localPath: string; relativePath: string; size: number }[]; dirs: string[]; isDirectory: boolean } {
+): {
+  files: { localPath: string; relativePath: string; size: number }[];
+  dirs: string[];
+  isDirectory: boolean;
+} {
   const stat = statSync(localPath);
   if (!stat.isDirectory()) {
-    return { files: [{ localPath, relativePath: relativeBase, size: stat.size }], dirs: [], isDirectory: false };
+    return {
+      files: [{ localPath, relativePath: relativeBase, size: stat.size }],
+      dirs: [],
+      isDirectory: false,
+    };
   }
 
   const dirs = [relativeBase];
@@ -257,7 +327,13 @@ function disconnectTab(tabId: string, announce = true): void {
 }
 
 export const SSHClient = {
-  async connect(sessionId: string, tabId: string): Promise<{
+  async connect(
+    sessionId: string,
+    tabId: string,
+    reconnectCwd?: string,
+    options?: TerminalConnectOptions,
+    ownerId?: number,
+  ): Promise<{
     sftpAvailable: boolean;
     sftpMessage?: string;
   }> {
@@ -269,7 +345,8 @@ export const SSHClient = {
       port: session.port,
       username: session.username,
       readyTimeout: 15000,
-      keepaliveInterval: 30000,
+      keepaliveInterval: 15000,
+      keepaliveCountMax: 3,
     };
 
     if (session.auth.kind === 'password') {
@@ -292,24 +369,44 @@ export const SSHClient = {
 
     disconnectTab(tabId, false);
     const client = new Client();
-    tabs.set(tabId, { id: tabId, sessionId, client });
+    const size =
+      options && validTerminalSize(options.cols, options.rows) ? options : { cols: 80, rows: 24 };
+    tabs.set(tabId, {
+      id: tabId,
+      sessionId,
+      client,
+      cols: size.cols,
+      rows: size.rows,
+      connectionId: randomUUID(),
+      ownerId,
+    });
     sendStatus(tabId, 'connecting');
 
     const isCurrent = (): boolean => tabs.get(tabId)?.client === client;
 
     return new Promise<{ sftpAvailable: boolean; sftpMessage?: string }>((resolve, reject) => {
       let settled = false;
+      const timeout = setTimeout(() => {
+        const error = new Error('SSH shell startup timed out');
+        rejectConnection(error);
+        if (isCurrent()) {
+          disconnectTab(tabId, false);
+          sendStatus(tabId, 'error', error.message);
+        }
+      }, 25000);
       const resolveConnection = (result: {
         sftpAvailable: boolean;
         sftpMessage?: string;
       }): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(timeout);
         resolve(result);
       };
       const rejectConnection = (error: Error): void => {
         if (settled) return;
         settled = true;
+        clearTimeout(timeout);
         reject(error);
       };
 
@@ -320,7 +417,27 @@ export const SSHClient = {
         }
 
         const sftpPromise = new Promise<{ sftpAvailable: boolean; sftpMessage?: string }>((res) => {
+          let finished = false;
+          const timer = setTimeout(() => {
+            finished = true;
+            res({
+              sftpAvailable: false,
+              sftpMessage: 'SFTP startup timed out; terminal remains available',
+            });
+          }, 10000);
+          timer.unref();
+          client.once('close', () => {
+            clearTimeout(timer);
+            finished = true;
+            res({ sftpAvailable: false });
+          });
           client.sftp((sftpErr, sftp) => {
+            clearTimeout(timer);
+            if (finished) {
+              sftp?.end();
+              return;
+            }
+            finished = true;
             const tab = tabs.get(tabId);
             if (!tab || tab.client !== client) {
               sftp?.end();
@@ -332,63 +449,84 @@ export const SSHClient = {
               res({ sftpAvailable: false, sftpMessage: sftpErr.message });
             } else {
               tab.sftp = sftp;
+              const unavailable = (error?: Error) => {
+                if (!isCurrent() || tab.sftp !== sftp) return;
+                tab.sftp = undefined;
+                sendSftpStatus(tabId, false, error?.message ?? 'SFTP channel closed');
+              };
+              sftp.on('error', unavailable);
+              sftp.on('close', () => unavailable());
               res({ sftpAvailable: true });
             }
           });
         });
 
-        client.shell({ term: 'xterm-256color', cols: 80, rows: 24 }, (err, stream) => {
-          if (!isCurrent()) {
-            stream?.close();
-            rejectConnection(new Error('Connection cancelled'));
-            return;
-          }
-          if (err) {
-            const tab = tabs.get(tabId);
-            try {
-              tab?.sftp?.end();
-              client.end();
-            } catch {
-              // ignore
-            }
-            if (isCurrent()) tabs.delete(tabId);
-            sendStatus(tabId, 'error', err.message);
-            rejectConnection(err);
-            return;
-          }
-          void (async () => {
-            const sf = await sftpPromise;
-            const tab = tabs.get(tabId);
-            if (!tab || tab.client !== client) {
-              stream.close();
+        client.shell(
+          { term: 'xterm-256color', cols: tabs.get(tabId)!.cols, rows: tabs.get(tabId)!.rows },
+          (err, stream) => {
+            if (!isCurrent()) {
+              stream?.close();
               rejectConnection(new Error('Connection cancelled'));
               return;
             }
+            if (err) {
+              const tab = tabs.get(tabId);
+              try {
+                tab?.sftp?.end();
+                client.end();
+              } catch {
+                // ignore
+              }
+              if (isCurrent()) tabs.delete(tabId);
+              sendStatus(tabId, 'error', err.message);
+              rejectConnection(err);
+              return;
+            }
+            const tab = tabs.get(tabId)!;
             tab.channel = stream;
-            stream.on('data', (chunk: Buffer) => {
+            stream.setWindow(tab.rows, tab.cols, 0, 0);
+            tab.flow = new OutputFlow(
+              () => {
+                stream.pause();
+                stream.stderr.pause();
+              },
+              () => {
+                stream.resume();
+                stream.stderr.resume();
+              },
+            );
+            const stdout = new TerminalDecoder((cwd) => sendCwd(tabId, cwd));
+            const stderr = new TerminalDecoder((cwd) => sendCwd(tabId, cwd));
+            const emit = (decoder: TerminalDecoder, chunk: Buffer) => {
               if (!isCurrent()) return;
-              const data = chunk.toString('utf8');
-              parseOsc7Cwd(tabId, data);
-              send(Channels.Ssh.DataEvent, { tabId, data });
-            });
-            stream.stderr.on('data', (chunk: Buffer) => {
+              const data = decoder.write(chunk);
+              if (!data) return;
+              const payload = { tabId, data, connectionId: tab.connectionId };
+              const owner = tab.ownerId === undefined ? undefined : webContents.fromId(tab.ownerId);
+              if (owner && !owner.isDestroyed()) {
+                tab.flow!.sent(data.length);
+                owner.send(Channels.Ssh.DataEvent, payload);
+              }
+            };
+            stream.on('data', (chunk: Buffer) => emit(stdout, chunk));
+            stream.stderr.on('data', (chunk: Buffer) => emit(stderr, chunk));
+            stream.on('error', (error: Error) => {
               if (!isCurrent()) return;
-              const data = chunk.toString('utf8');
-              parseOsc7Cwd(tabId, data);
-              send(Channels.Ssh.DataEvent, { tabId, data });
+              disconnectTab(tabId, false);
+              sendStatus(tabId, 'error', error.message);
             });
             stream.on('close', () => {
-              if (!isCurrent()) return;
-              sendStatus(tabId, 'closed');
-              client.end();
-              tabs.delete(tabId);
+              if (isCurrent()) disconnectTab(tabId);
             });
-            installCwdHook(stream);
-            sendSftpStatus(tabId, sf.sftpAvailable, sf.sftpMessage);
+            if (options?.shellIntegration) stream.write(cwdIntegrationCommand(reconnectCwd));
             sendStatus(tabId, 'connected');
-            resolveConnection({ sftpAvailable: sf.sftpAvailable, sftpMessage: sf.sftpMessage });
-          })();
-        });
+            // Shell readiness must not wait for an unavailable/hanging SFTP subsystem.
+            resolveConnection({ sftpAvailable: false });
+            void sftpPromise.then((sf) => {
+              if (isCurrent()) sendSftpStatus(tabId, sf.sftpAvailable, sf.sftpMessage);
+            });
+          },
+        );
       });
 
       // ssh2 may emit more than one error while a socket is being torn down
@@ -398,7 +536,7 @@ export const SSHClient = {
         if (isCurrent()) {
           logger.error('ssh client error', { tabId, sessionId, message: err.message });
           sendStatus(tabId, 'error', err.message);
-          tabs.delete(tabId);
+          disconnectTab(tabId, false);
         } else {
           logger.debug('ignored ssh error after tab closed or replaced', {
             tabId,
@@ -435,11 +573,23 @@ export const SSHClient = {
 
   resize(tabId: string, cols: number, rows: number): void {
     const tab = tabs.get(tabId);
-    if (tab?.channel) tab.channel.setWindow(rows, cols, 0, 0);
+    if (!tab || !validTerminalSize(cols, rows)) return;
+    tab.cols = cols;
+    tab.rows = rows;
+    if (tab.channel && !tab.channel.destroyed) tab.channel.setWindow(rows, cols, 0, 0);
+  },
+
+  acknowledge(tabId: string, connectionId: string, size: number, ownerId: number): void {
+    const tab = tabs.get(tabId);
+    if (tab?.connectionId === connectionId && tab.ownerId === ownerId) tab.flow?.acknowledge(size);
   },
 
   disconnect(tabId: string): void {
     disconnectTab(tabId);
+  },
+
+  disconnectOwner(ownerId: number): void {
+    for (const [id, tab] of tabs) if (tab.ownerId === ownerId) disconnectTab(id);
   },
 
   disconnectAll(): void {
@@ -516,6 +666,19 @@ export const SSHClient = {
     });
   },
 
+  async sftpReadFile(tabId: string, remotePath: string): Promise<string> {
+    return readRemoteText(getSftp(tabId), remotePath);
+  },
+
+  async sftpWriteFile(
+    tabId: string,
+    remotePath: string,
+    content: string,
+    expected: string,
+  ): Promise<void> {
+    return writeRemoteText(getSftp(tabId), remotePath, content, expected);
+  },
+
   async sftpFastPut(
     tabId: string,
     localPath: string,
@@ -523,6 +686,7 @@ export const SSHClient = {
     onProgress?: (transferred: number, total: number) => void,
   ): Promise<void> {
     const sftp = getSftp(tabId);
+    const expectedSize = statSync(localPath).size;
     return new Promise((resolve, reject) => {
       const opts =
         onProgress !== undefined
@@ -534,13 +698,19 @@ export const SSHClient = {
           : undefined;
       if (opts) {
         sftp.fastPut(localPath, remotePath, opts, (err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            reject(err);
+            return;
+          }
+          assertRemoteFileSize(sftp, remotePath, expectedSize).then(resolve, reject);
         });
       } else {
         sftp.fastPut(localPath, remotePath, (err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            reject(err);
+            return;
+          }
+          assertRemoteFileSize(sftp, remotePath, expectedSize).then(resolve, reject);
         });
       }
     });
@@ -553,6 +723,8 @@ export const SSHClient = {
     onProgress?: (transferred: number, total: number) => void,
   ): Promise<void> {
     const sftp = getSftp(tabId);
+    const expected = await sftpStat(sftp, remotePath);
+    if (expected.isDirectory) throw new Error(`Remote path is a directory: ${remotePath}`);
     return new Promise((resolve, reject) => {
       const opts =
         onProgress !== undefined
@@ -564,13 +736,29 @@ export const SSHClient = {
           : undefined;
       if (opts) {
         sftp.fastGet(remotePath, localPath, opts, (err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            reject(err);
+            return;
+          }
+          try {
+            assertLocalFileSize(localPath, expected.size);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
         });
       } else {
         sftp.fastGet(remotePath, localPath, (err) => {
-          if (err) reject(err);
-          else resolve();
+          if (err) {
+            reject(err);
+            return;
+          }
+          try {
+            assertLocalFileSize(localPath, expected.size);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
         });
       }
     });
@@ -585,13 +773,19 @@ export const SSHClient = {
     const sftp = getSftp(tabId);
     const rootName = basename(remotePath) || 'download';
     const targetRoot = pathJoin(localParentDir, rootName);
-    const { files, dirs } = await collectRemoteFiles(sftp, remotePath);
+    const { files, dirs, symlinks } = await collectRemoteFiles(sftp, remotePath);
     const total = files.reduce((sum, file) => sum + file.size, 0);
     let completed = 0;
 
     mkdirSync(targetRoot, { recursive: true });
     for (const dir of dirs) {
       mkdirSync(pathJoin(targetRoot, dir), { recursive: true });
+    }
+    for (const link of symlinks) {
+      const localPath = pathJoin(targetRoot, link.relativePath);
+      mkdirSync(pathJoin(localPath, '..'), { recursive: true });
+      if (existsSync(localPath)) unlinkSync(localPath);
+      symlinkSync(link.target, localPath);
     }
 
     for (const file of files) {
@@ -601,6 +795,7 @@ export const SSHClient = {
         onProgress?.(completed + transferred, total);
       });
       completed += file.size;
+      assertLocalFileSize(localPath, file.size);
       onProgress?.(completed, total);
     }
   },
@@ -629,8 +824,78 @@ export const SSHClient = {
         onProgress?.(completed + transferred, total);
       });
       completed += file.size;
+      await assertRemoteFileSize(sftp, remotePath, file.size);
       onProgress?.(completed, total);
     }
+  },
+
+  async exec(
+    tabId: string,
+    command: string,
+    stdin?: string,
+  ): Promise<{ code: number | null; signal?: string; stdout: string; stderr: string }> {
+    const tab = tabs.get(tabId);
+    if (!tab?.client) throw new Error('SSH connection not available for this tab');
+    return new Promise((resolve, reject) => {
+      tab.client.exec(command, (err, stream) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        const stdout: Buffer[] = [];
+        const stderr: Buffer[] = [];
+        stream.on('data', (chunk: Buffer) => stdout.push(chunk));
+        stream.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+        if (stdin !== undefined) stream.end(stdin);
+        stream.on('close', (code: number | null, signal?: string) => {
+          resolve({
+            code,
+            signal,
+            stdout: Buffer.concat(stdout).toString('utf8'),
+            stderr: Buffer.concat(stderr).toString('utf8'),
+          });
+        });
+        stream.on('error', reject);
+      });
+    });
+  },
+
+  async createRemoteArchive(
+    tabId: string,
+    remotePath: string,
+    format: 'zip' | 'tar.gz',
+    sudoPassword?: string,
+  ): Promise<{ remoteArchivePath: string; label: string; sudo: boolean }> {
+    const archivePath = remoteArchivePath(remotePath, format);
+    const command = archiveCommand(remotePath, archivePath, format);
+    const sudo = Boolean(sudoPassword);
+    const packedCommand = sudo
+      ? sudoCommand(`${command} && chmod 0644 ${shellQuote(archivePath)}`)
+      : command;
+    const result = await this.exec(
+      tabId,
+      packedCommand,
+      sudo ? `${sudoPassword ?? ''}\n` : undefined,
+    );
+    if (result.code !== 0) {
+      const output = `${result.stderr || result.stdout}`.trim();
+      throw new Error(
+        output || `Archive command failed with exit code ${result.code ?? 'unknown'}`,
+      );
+    }
+    return { remoteArchivePath: archivePath, label: archiveName(remotePath, format), sudo };
+  },
+
+  async removeRemoteFile(tabId: string, remotePath: string, sudoPassword?: string): Promise<void> {
+    if (sudoPassword) {
+      await this.exec(tabId, sudoCommand(`rm -f ${shellQuote(remotePath)}`), `${sudoPassword}\n`);
+      return;
+    }
+    const sftp = getSftp(tabId);
+    await new Promise<void>((resolve) => {
+      sftp.unlink(remotePath, () => resolve());
+    });
   },
 
   /** Resolve `name` (file/dir segment, `.`, or `..`) against remote `cwd`. */

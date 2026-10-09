@@ -10,6 +10,7 @@ async function startFixture({ realShell = false } = {}) {
   const home = realShell ? fs.mkdtempSync(path.join(os.tmpdir(), 'mnl-bash-e2e-')) : '/workspace';
   const processes = new Set();
   const listedPaths = [];
+  const monitor = { calls: 0, fail: false };
   const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const files = new Map([[`${home}/config.txt`, Buffer.from('hello world\nhello SSH\n中文配置\n')]]);
   const clients = new Set();
@@ -23,6 +24,13 @@ async function startFixture({ realShell = false } = {}) {
       const session = accept();
       session.on('pty', (accept, _reject, info) => { sizes.push(info); accept(); });
       session.on('window-change', (accept, _reject, info) => { sizes.push(info); accept?.(); });
+      session.on('exec', (accept, reject, info) => {
+        if (!info.command.includes('__MNL_STAT__')) { reject(); return; }
+        const stream = accept(); const n = ++monitor.calls;
+        if (monitor.fail) { stream.stderr.write('permission denied'); stream.exit(1); stream.end(); return; }
+        stream.write(`__MNL_STAT__\ncpu ${100 + 30*n} 0 ${50 + 10*n} ${850 + 60*n} 0 0 0 0\n__MNL_MEM__\nMemTotal: 1000000 kB\nMemAvailable: 400000 kB\n__MNL_DISK__\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 1000000 700000 300000 70% /\n__MNL_LOAD__\n0.12 0.2 0.3 1/100 45\n__MNL_END__\n`);
+        stream.exit(0); stream.end();
+      });
       session.on('shell', (accept) => {
         const stream = accept(); shells.push(stream);
         if (realShell) {
@@ -30,8 +38,8 @@ async function startFixture({ realShell = false } = {}) {
             cwd: home, env: { PATH: process.env.PATH, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', HOME: home, HISTFILE: '/dev/null', TERM: 'xterm-256color', PS1: 'fixture> ' },
           });
           processes.add(child);
-          child.stdout.on('data', (data) => { if (!stream.destroyed) stream.write(data); });
-          child.stderr.on('data', (data) => { if (!stream.destroyed) stream.write(data); });
+          child.stdout.on('data', (data) => { if (!stream.destroyed) stream.write(data.toString().replace(/\r?\n/g, '\r\n')); });
+          child.stderr.on('data', (data) => { if (!stream.destroyed) stream.write(data.toString().replace(/\r?\n/g, '\r\n')); });
           child.stdin.on('error', () => {});
           child.on('error', () => stream.close());
           child.on('exit', () => { processes.delete(child); stream.close(); });
@@ -80,6 +88,6 @@ async function startFixture({ realShell = false } = {}) {
     }));
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  return { home, listedPaths, port: server.address().port, files, shells, sizes, input, close: () => { for (const client of clients) client.end(); server.close(); for (const child of processes) child.kill('SIGKILL'); if (realShell) fs.rmSync(home, { recursive: true, force: true }); } };
+  return { home, listedPaths, monitor, port: server.address().port, files, shells, sizes, input, close: () => { for (const client of clients) client.end(); server.close(); for (const child of processes) child.kill('SIGKILL'); if (realShell) fs.rmSync(home, { recursive: true, force: true }); } };
 }
 module.exports = { startFixture };

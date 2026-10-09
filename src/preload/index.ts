@@ -9,6 +9,17 @@ import type {
 } from '@shared/types/ipc';
 
 const api: IpcApi = {
+  shortcuts: {
+    exportFile: (ids) => ipcRenderer.invoke(Channels.Shortcuts.Export, ids),
+    chooseImport: () => ipcRenderer.invoke(Channels.Shortcuts.ChooseImport),
+    importCopies: (inputs) => ipcRenderer.invoke(Channels.Shortcuts.Import, inputs),
+    list: () => ipcRenderer.invoke(Channels.Shortcuts.List),
+    save: (input, id, expected) => ipcRenderer.invoke(Channels.Shortcuts.Save, input, id, expected),
+    remove: (id) => ipcRenderer.invoke(Channels.Shortcuts.Remove, id),
+    openEditor: (id, sessionId) => ipcRenderer.invoke(Channels.Shortcuts.OpenEditor, id, sessionId),
+    check: (command) => ipcRenderer.invoke(Channels.Shortcuts.Check, command),
+    execute: (id, tabId) => ipcRenderer.invoke(Channels.Shortcuts.Execute, id, tabId),
+  },
   app: {
     ping: () => ipcRenderer.invoke(Channels.App.Ping),
     getVersion: () => ipcRenderer.invoke(Channels.App.Version),
@@ -30,6 +41,7 @@ const api: IpcApi = {
     remove: (id: string) => ipcRenderer.invoke(Channels.Session.Remove, id),
   },
   ssh: {
+    metrics: (tabId) => ipcRenderer.invoke(Channels.Ssh.Metrics, tabId),
     connect: (
       sessionId: string,
       tabId: string,

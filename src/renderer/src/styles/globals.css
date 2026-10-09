@@ -75,6 +75,69 @@ body {
 }
 
 /* Never constrain xterm's measured cell grid with CSS scaling/max-width. */
-.workspace-welcome { background: radial-gradient(ellipse at 75% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 60%); }
-button:focus-visible, [role='button']:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-input, textarea { user-select: text; }
+.workspace-welcome {
+  background: radial-gradient(
+    ellipse at 75% 0%,
+    color-mix(in srgb, var(--accent) 9%, transparent),
+    transparent 60%
+  );
+}
+button:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+input,
+textarea {
+  user-select: text;
+}
+
+.shell-layer {
+  margin: 0;
+  padding: 12px;
+  font-family: 'JetBrains Mono', 'Liberation Mono', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  font-variant-ligatures: none;
+  tab-size: 4;
+  white-space: pre;
+}
+.shell-plain {
+  color: var(--color-text, #cbd5e1);
+}
+.shell-comment {
+  color: #8290a5;
+}
+.shell-string {
+  color: #78c99f;
+}
+.shell-variable {
+  color: #e9bb75;
+}
+.shell-keyword {
+  color: #90aaff;
+}
+.shell-operator {
+  color: #e498c2;
+}
+[data-theme='light'] .shell-plain {
+  color: #263244;
+}
+[data-theme='light'] .shell-comment {
+  color: #637088;
+}
+[data-theme='light'] .shell-string {
+  color: #24754a;
+}
+[data-theme='light'] .shell-variable {
+  color: #935b10;
+}
+[data-theme='light'] .shell-keyword {
+  color: #4358ac;
+}
+[data-theme='light'] .shell-operator {
+  color: #a03271;
+}
+.shell-editor textarea::selection {
+  background: #6089d366;
+}

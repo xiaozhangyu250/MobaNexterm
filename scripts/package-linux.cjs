@@ -126,7 +126,8 @@ async function main() {
     throw new Error('electron-builder binary not found. Run npm install first.');
   }
 
-  run(builder, ['--linux', ...targets]);
+  // Packaging only creates local artifacts; release publication is an explicit separate step.
+  run(builder, ['--linux', ...targets, '--publish', 'never']);
 
   const artifacts = listArtifacts();
   console.log('\nArtifacts:');

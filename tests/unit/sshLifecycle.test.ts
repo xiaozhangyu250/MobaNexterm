@@ -24,6 +24,12 @@ class MockChannel extends EventEmitter {
 }
 class MockClient extends EventEmitter {
   channel = new MockChannel();
+  execChannels: MockChannel[] = [];
+  exec = vi.fn((_command, cb) => {
+    const stream = new MockChannel();
+    this.execChannels.push(stream);
+    cb(null, stream);
+  });
   sftpCallback?: (err: Error | null, sftp?: { end: () => void }) => void;
   shell = vi.fn((_size, cb) => cb(null, this.channel));
   sftp = vi.fn((cb) => {
@@ -74,6 +80,36 @@ afterEach(() => {
 });
 
 describe('SSH lifecycle', () => {
+  it('routes shortcuts only to an owned, connected terminal with a matching scope', async () => {
+    const pending = SSHClient.connect('host', 'tab', undefined, { cols: 80, rows: 24 }, 1);
+    state.clients[0].emit('ready');
+    await pending;
+    expect(() => SSHClient.executeShortcut('tab', 'other', 'pwd\r', 1)).toThrow('another host');
+    expect(() => SSHClient.executeShortcut('tab', null, 'pwd\r', 2)).toThrow('disconnected');
+    SSHClient.executeShortcut('tab', 'host', 'pwd\r', 1);
+    expect(state.clients[0].channel.write).toHaveBeenCalledOnce();
+    expect(state.clients[0].channel.write).toHaveBeenCalledWith('pwd\r');
+    SSHClient.disconnect('tab');
+    expect(() => SSHClient.executeShortcut('tab', null, 'pwd\r', 1)).toThrow('disconnected');
+  });
+  it('deduplicates monitoring requests and rejects samples after disconnect', async () => {
+    const pending = SSHClient.connect('host', 'tab', undefined, { cols: 80, rows: 24 }, 1);
+    const client = state.clients[0];
+    client.emit('ready');
+    await pending;
+    await expect(SSHClient.metrics('tab', 2)).rejects.toThrow('unavailable');
+    const first = SSHClient.metrics('tab', 1);
+    const second = SSHClient.metrics('tab', 1);
+    const rejected = Promise.all([
+      expect(first).rejects.toThrow('disconnected'),
+      expect(second).rejects.toThrow('disconnected'),
+    ]);
+    expect(client.exec).toHaveBeenCalledOnce();
+    expect(client.channel.write).not.toHaveBeenCalled();
+    SSHClient.disconnect('tab');
+    await rejected;
+    expect(client.execChannels[0].close).toHaveBeenCalled();
+  });
   it('isolates an SFTP channel failure from the SSH terminal', async () => {
     const connected = SSHClient.connect('s', 'tab');
     const client = state.clients[0];

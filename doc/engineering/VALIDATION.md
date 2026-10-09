@@ -17,9 +17,11 @@
 - 多屏几何恢复同时处理完全离屏、部分可见、分辨率缩小及负坐标屏幕，调整最小尺寸，尽量恢复最大化/全屏状态。
 - 工作台更新、会话筛选、可调整侧栏、Ctrl+Tab / Ctrl+Shift+Tab、Ctrl+Shift+K 新会话、F11 全屏、真实连接信息状态栏。
 
+性能摘要、快捷指令及选择性 JSON 导入/导出的设计与专项验收见 [PERFORMANCE_AND_SHORTCUTS.md](PERFORMANCE_AND_SHORTCUTS.md)。
+
 ## 自动验证
 
-本轮本地验证结果：53 项单元/服务回归全部通过，类型检查与 lint 无错误，生产构建通过；Electron + 临时 SSH/SFTP 集成流程通过。
+本轮本地验证结果：78 项单元/服务回归全部通过，类型检查与 lint 无错误，生产构建通过；Electron + 临时 SSH/SFTP 集成流程通过。
 
 ```bash
 npm ci

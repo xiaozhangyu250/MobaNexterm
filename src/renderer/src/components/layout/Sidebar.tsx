@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { Folder, Plus, Server } from 'lucide-react';
+import { ShortcutsPanel } from '@/components/shortcuts/ShortcutsPanel';
+import { Folder, Plus, Server, Zap } from 'lucide-react';
 import { SessionTree } from '@/components/session/SessionTree';
 import { useI18n } from '@/lib/i18n';
 import { useUiStore } from '@/stores/uiStore';
@@ -11,7 +12,7 @@ interface SidebarProps {
 
 export function Sidebar({ sshBrowser }: SidebarProps) {
   const t = useI18n();
-  const [width, setWidth] = useState(310);
+  const [width, setWidth] = useState(340);
   const openDialog = useUiStore((s) => s.openSessionDialog);
   const activePanel = useUiStore((s) => s.sidebarPanel);
   const setActivePanel = useUiStore((s) => s.setSidebarPanel);
@@ -21,7 +22,7 @@ export function Sidebar({ sshBrowser }: SidebarProps) {
       style={{ width }}
       className="relative flex min-w-[240px] max-w-[50vw] shrink-0 flex-col border-r border-border bg-bg-elevated/30"
     >
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-2">
+      <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border px-2">
         <PanelTab
           active={activePanel === 'sessions'}
           icon={<Server className="h-3.5 w-3.5" />}
@@ -33,6 +34,12 @@ export function Sidebar({ sshBrowser }: SidebarProps) {
           icon={<Folder className="h-3.5 w-3.5" />}
           label={t('sidebar.browser')}
           onClick={() => setActivePanel('browser')}
+        />
+        <PanelTab
+          active={activePanel === 'shortcuts'}
+          icon={<Zap className="h-3.5 w-3.5" />}
+          label={t('shortcuts.title')}
+          onClick={() => setActivePanel('shortcuts')}
         />
         {activePanel === 'sessions' ? (
           <button
@@ -60,6 +67,9 @@ export function Sidebar({ sshBrowser }: SidebarProps) {
         </div>
         <div className={cn('h-full', activePanel === 'browser' ? 'block' : 'hidden')}>
           {sshBrowser}
+        </div>
+        <div className={cn('h-full', activePanel === 'shortcuts' ? 'block' : 'hidden')}>
+          <ShortcutsPanel />
         </div>
       </div>
       <div
@@ -104,7 +114,7 @@ function PanelTab({
       type="button"
       onClick={onClick}
       className={cn(
-        'flex h-7 items-center gap-1.5 rounded px-2 text-xs transition',
+        'flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-2 text-xs transition',
         active ? 'bg-bg text-text' : 'text-text-muted hover:bg-bg/70 hover:text-text',
       )}
     >

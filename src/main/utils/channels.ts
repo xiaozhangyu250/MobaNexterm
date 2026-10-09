@@ -2,6 +2,18 @@
 // to avoid string drift between main / preload / renderer.
 
 export const Channels = {
+  Shortcuts: {
+    Export: 'shortcuts:export',
+    ChooseImport: 'shortcuts:choose-import',
+    Import: 'shortcuts:import',
+    List: 'shortcuts:list',
+    Save: 'shortcuts:save',
+    Remove: 'shortcuts:remove',
+    OpenEditor: 'shortcuts:open-editor',
+    Check: 'shortcuts:check',
+    Execute: 'shortcuts:execute',
+    Changed: 'shortcuts:changed',
+  },
   App: {
     Ping: 'app:ping',
     Version: 'app:get-version',
@@ -21,6 +33,7 @@ export const Channels = {
   },
   Ssh: {
     Connect: 'ssh:connect',
+    Metrics: 'ssh:metrics',
     Write: 'ssh:write',
     Acknowledge: 'ssh:acknowledge',
     Resize: 'ssh:resize',

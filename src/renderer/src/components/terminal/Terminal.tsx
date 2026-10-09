@@ -1,3 +1,4 @@
+import { registerTerminalAction } from '@/lib/terminalActions';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
@@ -113,6 +114,16 @@ export function Terminal({ tabId }: TerminalProps) {
     const search = new SearchAddon();
     searchRef.current = search;
     const fit = new FitAddon();
+    const unregisterAction = registerTerminalAction(tabId, async (shortcutId) => {
+      if (statusRef.current !== 'connected' || useTerminalStore.getState().activeId !== tabId)
+        throw new Error('Active terminal is disconnected / 当前终端未连接');
+      if (term.buffer.active.type === 'alternate')
+        throw new Error(
+          'Exit the full-screen program before running a shortcut / 请先退出全屏程序再执行快捷指令',
+        );
+      await window.api.shortcuts.execute(shortcutId, tabId);
+      term.focus();
+    });
     termRef.current = term;
     fitRef.current = fit;
     term.loadAddon(fit);
@@ -227,6 +238,7 @@ export function Terminal({ tabId }: TerminalProps) {
     return () => {
       disposed = true;
       cancelAnimationFrame(frame);
+      unregisterAction();
       searchResult.dispose();
       writeDisposable.dispose();
       selectionDisposable.dispose();

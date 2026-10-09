@@ -1,14 +1,14 @@
 {
   "name": "mobanexterm",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "A Linux-first SSH terminal and SFTP client built with Electron",
   "private": true,
   "author": "MobaNexterm",
   "license": "MIT",
-  "homepage": "https://mobanexterm.app",
+  "homepage": "https://github.com/xiaozhangyu250/MobaNexterm",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mobanexterm/mobanexterm.git"
+    "url": "https://github.com/xiaozhangyu250/MobaNexterm.git"
   },
   "main": "./out/main/index.js",
   "scripts": {
@@ -24,7 +24,8 @@
     "dist:linux": "node scripts/package-linux.cjs",
     "postinstall": "node scripts/setup-bin-shims.cjs && (electron-builder install-app-deps || true)",
     "check": "npm run typecheck && npm run lint && npm test && npm run build",
-    "test:electron": "npm run build && node tests/electron/smoke.cjs"
+    "test:electron": "npm run build && node tests/electron/smoke.cjs && node tests/electron/features.cjs && node tests/electron/shortcut-transfer.cjs",
+    "docs:screenshots": "npm run build && node scripts/capture-readme.cjs"
   },
   "engines": {
     "node": ">=20"

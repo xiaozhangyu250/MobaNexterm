@@ -28,7 +28,7 @@ jobs:
       - run: npm run build
 
       - name: Electron and loopback SSH regression
-        run: xvfb-run -a node tests/electron/smoke.cjs
+        run: xvfb-run -a sh -c "node tests/electron/smoke.cjs && node tests/electron/features.cjs && node tests/electron/shortcut-transfer.cjs"
 
       - uses: actions/upload-artifact@v4
         if: always()

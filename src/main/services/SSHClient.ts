@@ -1,3 +1,5 @@
+import { parseMetrics, readMetrics, type CpuSample } from './remoteMetrics';
+import type { RemoteMetrics } from '@shared/types/ipc';
 import { cwdIntegrationCommand } from '../terminal/cwdIntegration';
 import { Client, type ClientChannel, type SFTPWrapper, type FileEntryWithStats } from 'ssh2';
 import {
@@ -32,6 +34,9 @@ interface Tab {
   connectionId: string;
   ownerId?: number;
   flow?: OutputFlow;
+  cpuSample?: CpuSample;
+  metricsRequest?: Promise<RemoteMetrics>;
+  lastMetrics?: RemoteMetrics;
 }
 
 const tabs = new Map<string, Tab>();
@@ -564,6 +569,35 @@ export const SSHClient = {
         rejectConnection(error);
       }
     });
+  },
+
+  async metrics(tabId: string, ownerId: number): Promise<RemoteMetrics> {
+    const tab = tabs.get(tabId);
+    if (!tab?.channel || tab.channel.destroyed || tab.ownerId !== ownerId)
+      throw new Error('SSH connection unavailable');
+    if (tab.metricsRequest) return tab.metricsRequest;
+    if (tab.lastMetrics && Date.now() - tab.lastMetrics.sampledAt < 900) return tab.lastMetrics;
+    tab.metricsRequest = readMetrics(tab.client)
+      .then((output) => {
+        if (tabs.get(tabId) !== tab) throw new Error('SSH connection changed');
+        const result = parseMetrics(output, tab.cpuSample);
+        tab.cpuSample = result.cpu;
+        tab.lastMetrics = result.metrics;
+        return result.metrics;
+      })
+      .finally(() => {
+        tab.metricsRequest = undefined;
+      });
+    return tab.metricsRequest;
+  },
+
+  executeShortcut(tabId: string, sessionId: string | null, command: string, ownerId: number): void {
+    const tab = tabs.get(tabId);
+    if (!tab?.channel || tab.channel.destroyed || tab.ownerId !== ownerId)
+      throw new Error('SSH disconnected / SSH 已断开');
+    if (sessionId !== null && sessionId !== tab.sessionId)
+      throw new Error('Shortcut belongs to another host / 指令不适用于此主机');
+    tab.channel.write(command);
   },
 
   write(tabId: string, data: string): void {

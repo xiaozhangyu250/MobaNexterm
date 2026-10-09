@@ -4,180 +4,160 @@
 
 # MobaNexterm
 
-MobaNexterm is an open-source SSH terminal and SFTP file manager designed for Linux desktops. Inspired by MobaXterm's integrated workflow, it brings session management, remote terminals, and file transfers together in one lightweight, modern desktop application.
+**An SSH debugging workspace for Linux: terminals, remote files, performance summaries, and shareable commands.**
 
-The project is built with Electron, React, TypeScript, xterm.js, and ssh2. It is currently under active development.
+Inspired by MobaXterm's integrated workflow, MobaNexterm brings everyday SSH tasks into one desktop application. Connect to a development board, inspect robot logs, edit remote configuration, and save the commands you use repeatedly—all from the same workspace.
 
-> [!WARNING]
-> File operations directly modify the remote host. Before uploading, overwriting, renaming, changing permissions, or deleting files in production, verify the target path and back up important data.
+Built with Electron, React, TypeScript, xterm.js, and ssh2. MIT licensed and under active development.
 
-## Workspace reliability update
+[Quick start](#quick-start) · [Highlights](#highlights) · [Installation](#installation) · [Development and testing](#development-and-testing) · [Roadmap](doc/engineering/PLAN.md)
 
-The workspace now includes streaming UTF-8 decoding, PTY sizing and output flow control, terminal search, automatic directory refresh, independent editor windows with find/replace and conflict-aware atomic saves, session filtering, a resizable sidebar and display recovery.
+![SSH terminal, directory-following file browser, and remote performance summary](doc/img/readme-workspace.png)
 
-Run `npm run check` for the engineering checks and `npm run test:electron` for the isolated Electron + loopback SSH/SFTP regression. Bash/Zsh directory integration is enabled by default and installs a prompt hook at connection time. SSH settings can disable it; changes require reconnecting. Saved opt-outs are preserved, with an enable-and-reconnect action in the file panel. File refresh works independently. Safe editor saves require the OpenSSH atomic-rename extension.
+> Screenshots show the actual application in Chinese, using an isolated local SSH/SFTP demo server. Hosts, files, logs, and metric values are examples, not real device data. Robot and ROS commands illustrate user-defined workflows; they are not built-in ROS diagnostics. English is also available in Settings.
 
-See [implementation and validation](doc/engineering/VALIDATION.md) and [roadmap](doc/engineering/PLAN.md) for tested scope and remaining release checks.
+## Highlights
 
-## Preview
+| Everyday task | What MobaNexterm provides |
+| --- | --- |
+| Work with several devices | Saved SSH sessions, name/host/user filtering, terminal tabs, password or private-key authentication |
+| Inspect files while running commands | SFTP follows the terminal directory; the current and expanded directories refresh about every 3 seconds |
+| Check device load | CPU, memory, and root filesystem usage in the status bar, normally sampled every 5 seconds |
+| Avoid repetitive typing | Custom working directories and multiline commands, available globally or for one saved host |
+| Share debugging workflows | Selective JSON export/import, script previews, and explicit mapping to local hosts |
+| Edit remote configuration | Independent editor windows, basic highlighting, find/replace, and save conflict checks |
+| Review output after a disconnect | Inline reconnect notices, readable/searchable scrollback, and `R` to reconnect |
 
-![MobaNexterm terminal and SSH file browser](doc/img/截图%202026-06-15%2020-33-00.png)
+### Keep the terminal and file browser together
+
+Change directories in the terminal and the SSH Browser can follow. Files created or removed by terminal commands or other programs appear through automatic refresh. Pause directory following whenever you want to browse independently.
+
+- Upload and download files or directories, including drag-and-drop uploads from your local file manager.
+- Create directories, rename, delete, change permissions, copy paths, and download archives.
+- Bash/Zsh directory integration is enabled by default; saved opt-outs are respected. Reconnect after changing the setting. Native server-side OSC 7 directory reports also work.
+- Shell and SFTP availability are handled separately, so SFTP failure does not close the terminal.
+
+The terminal includes ANSI colors, Unicode 11 character widths, 5,000 lines of scrollback, clickable links, and `Ctrl+Shift+F` search. Window dimensions are synchronized with the remote PTY, and output flow control handles sustained streams.
+
+### Turn routine operations into quick commands
+
+The **Commands** sidebar filters buttons by the active SSH session. Share resource checks across all hosts, or limit device-specific launch scripts and log commands to one saved session.
+
+![Quick commands with global and host-specific scopes](doc/img/readme-shortcuts.png)
+
+Each command has a name, working directory, multiline script, and scope. Leave the directory empty to use the terminal's current directory, or specify an absolute path, `~`, or `~/…`. If changing directories fails, the script is not executed.
+
+The command editor opens in an **independent, non-modal window**, so you can continue using the terminal and copying text while editing. It includes Shell highlighting, field validation, optional Bash syntax checking, `Ctrl+S`, and an unsaved-changes prompt.
+
+![Independent command editor with directory, scope, multiline script, and syntax checking](doc/img/readme-command-editor.png)
+
+Commands run in the current terminal's Shell environment. Use them at an empty shell prompt. Execution is disabled after disconnect and blocked in alternate-screen applications such as Vim. Bash syntax checking does not execute scripts or validate remote tools and paths.
+
+### Select, preview, and share command configurations
+
+Export a useful collection of debugging commands. Other users can import just the entries they need and bind them to their own devices.
+
+- **Export:** select all or individual entries from every saved command, preview directories and scripts, and save a JSON file.
+- **Import:** preview and select entries, then explicitly map host-specific commands to a local SSH session or make them global. Bulk scope assignment is supported.
+- **Name conflicts:** imports create new local records. Conflicting names receive numbered suffixes such as `Name (2)`; existing commands are not overwritten.
+- **Validation:** format, version, fields, and target hosts are checked before saving the batch. Failure or cancellation does not partially import data. Importing never runs scripts.
+
+![Selective import with script preview and local host mapping](doc/img/readme-command-import.png)
 
 <details>
-<summary>View more screenshots</summary>
+<summary>See selective command export</summary>
 
-### Terminal context menu
-
-![Terminal copy and paste menu](doc/img/截图%202026-06-15%2020-33-37.png)
-
-### SFTP file context menu
-
-![SFTP file operations](doc/img/截图%202026-06-15%2020-33-56.png)
-
-### Connection errors and quick reconnect
-
-![SSH connection error](doc/img/截图%202026-06-15%2020-32-01.png)
+![Select and preview the commands to export](doc/img/readme-command-export.png)
 
 </details>
 
-## Features
+Files support up to 500 commands and 2 MiB. SSH credentials, session IDs, and connection settings are excluded. Script text and host display names are retained, including anything users put inside a command. See the [format and implementation notes](doc/engineering/PERFORMANCE_AND_SHORTCUTS.md#快捷指令导入与导出).
 
-### SSH sessions
+### Edit remote files in independent windows
 
-- Create, edit, save, and delete SSH connections
-- Password and local private-key authentication
-- Passphrase-protected private keys
-- Open a terminal by double-clicking a session or using its connect button
-- Manage multiple remote terminals in tabs
-- Press `R` to reconnect after a connection error or disconnect
+Double-click an editable text file to open it separately, keeping the terminal available without a manual download/edit/upload cycle.
 
-### Remote terminal
+- Basic syntax highlighting, cursor position, search, case matching, replace, and replace all.
+- `Ctrl+F` to find, `Ctrl+H` to replace, `Ctrl+S` to save, and unsaved-change protection on close.
+- Save-time checks for external changes, followed by a temporary-file write and replacement using the OpenSSH atomic-rename extension.
+- Local drafts remain available after a failed save. Unsupported safe-save capabilities are reported explicitly.
 
-- Interactive terminal powered by xterm.js with `xterm-256color` support
-- Automatic terminal fitting and remote PTY resize synchronization
-- 5,000-line scrollback buffer
-- Clickable web links detected in terminal output
-- Context-menu copy and paste with `Ctrl+Shift+C` / `Ctrl+Shift+V`
-- Live connecting, connected, closed, and error indicators on each tab
+![Independent remote text editor with YAML highlighting and find/replace](doc/img/readme-file-editor.png)
 
-### SFTP file management
+Text editing is limited to supported files up to 2 MiB; binary files and invalid UTF-8 are rejected. See [validation notes](doc/engineering/VALIDATION.md) for the complete save boundaries.
 
-- Browse remote directories in a tree or enter a path manually
-- Follow the terminal's current working directory
-- Upload and download individual files
-- Recursively upload and download directories
-- Drag files or directories from the local file manager to upload them
-- Track transfer progress and task status
-- Create directories, rename, delete, and change Unix permissions
-- Copy a remote file or directory path
-- Continue using the SSH terminal when the server does not provide SFTP
+### A focused desktop workspace
 
-### Appearance and localization
+Performance sampling uses a separate SSH channel and does not insert monitoring commands into the interactive terminal. Hover over memory or disk usage to see used/total values. Missing or failed samples are marked unavailable instead of presenting stale data as current.
 
-- Dark and light themes
-- English and Simplified Chinese interfaces
-- UI scaling from `80%` to `125%`
-- Terminal font sizes from `11px` to `20px`
-- Locally persisted preferences
+The UI includes dark/light themes, English/Chinese localization, a resizable sidebar, 80%–125% UI scaling, and 11–20 px terminal fonts. Independent editors open on the main window's display; window placement also handles off-screen positions and display layout changes.
 
-### Security and desktop integration
+<details>
+<summary>See disconnect behavior: keep the context and press R to reconnect</summary>
 
-- Passwords and private-key passphrases are encrypted with Electron `safeStorage` when available
-- Context isolation is enabled and Node.js integration is disabled in the renderer
-- External links open in the system's default browser
-- Single-instance operation prevents concurrent processes from modifying session data
+Disconnect notices are appended to the terminal in red with separators. Previous output remains available, and reconnecting preserves scrollback.
 
-> [!NOTE]
-> If Electron `safeStorage` encryption is unavailable in the current desktop environment, the application falls back to local plaintext storage. Use a desktop environment with a configured system keyring and protect your user configuration directory.
+![Inline disconnect notice preserves terminal history](doc/img/readme-reconnect.png)
 
-## Quick Install
+</details>
 
-### Requirements
+## Quick Start
 
-- A Linux desktop environment
-- Network access to the target server
-- SSH enabled on the target server; the SFTP subsystem is also required for file management
+1. Click `+` in **Sessions**, or press `Ctrl+Shift+K`, and enter the host, port, username, and authentication details.
+2. Double-click the saved session to open a terminal. Use **SSH Browser** to inspect and transfer files.
+3. Open **Commands**, click `+`, enter a directory and script, choose global or host-specific scope, and save.
+4. Click a command button at an empty shell prompt. Use **Export commands** to share a collection and **Import commands** to load one.
 
-Download the package matching your system architecture from the project's [Releases](https://github.com/mobanexterm/mobanexterm/releases) page.
+For example, save the following as a host-specific command with your workspace as its working directory. Adjust the ROS version and paths to the actual remote environment:
 
-### Debian / Ubuntu
+```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 topic list
+ros2 topic info /scan
+```
 
-After downloading the `.deb` package, run this command from its directory:
+| Action | Shortcut |
+| --- | --- |
+| New SSH session | `Ctrl+Shift+K` |
+| Switch terminal tabs | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
+| Search terminal output | `Ctrl+Shift+F` |
+| Copy / paste in terminal | `Ctrl+Shift+C` / `Ctrl+Shift+V` |
+| Find / replace in remote file editor | `Ctrl+F` / `Ctrl+H` |
+| Save in an editor | `Ctrl+S` |
+| Fullscreen | `F11` |
+| Reconnect after disconnect | Press `R` in the terminal |
+
+## Installation
+
+Requires a Linux desktop and an accessible SSH server. File management requires SFTP. Performance sampling targets Linux hosts that provide `/proc` and `df`.
+
+Check [Releases](https://github.com/xiaozhangyu250/MobaNexterm/releases) for packages. If a suitable prebuilt package is not available, run from source.
+
+**Debian / Ubuntu**
+
+Replace the filename with your downloaded version and architecture:
 
 ```bash
 sudo apt install ./MobaNexterm-VERSION-ARCH.deb
 ```
 
-Launch MobaNexterm from the application menu or from a terminal:
+Launch from the application menu or run `/opt/MobaNexterm/mobanexterm`. Uninstall with `sudo apt remove mobanexterm`.
 
-```bash
-/opt/MobaNexterm/mobanexterm
-```
-
-Uninstall it with:
-
-```bash
-sudo apt remove mobanexterm
-```
-
-### AppImage
-
-After downloading the `.AppImage` file:
+**AppImage**
 
 ```bash
 chmod +x MobaNexterm-VERSION-ARCH.AppImage
 ./MobaNexterm-VERSION-ARCH.AppImage
 ```
 
-AppImage requires no installation and can run from any directory with execute permission.
+### Run from source
 
-## Quick Start
-
-### 1. Create an SSH session
-
-1. Start MobaNexterm.
-2. Click `+` in the upper-right corner of the Sessions panel, or click the Quick Connect area.
-3. Enter a session name, host, port, and username.
-4. Select password or private-key authentication. For a private key, enter its absolute local path.
-5. Click Create to save the session.
-
-### 2. Connect to a remote host
-
-Double-click a saved session, or hover over it and click the connect button. Each connection opens in an independent terminal tab, so you can work with multiple hosts at the same time.
-
-If the connection fails or the remote shell closes, press `R` in the current terminal to reconnect.
-
-### 3. Use the terminal
-
-| Action | Shortcut or control |
-| --- | --- |
-| Copy selected text | `Ctrl+Shift+C` or the terminal context menu |
-| Paste clipboard text | `Ctrl+Shift+V` or the terminal context menu |
-| Reconnect | Press `R` after an error or disconnect |
-| Open a link | Click a detected URL in the terminal |
-| Close a session | Click the close button on its tab |
-
-### 4. Manage remote files
-
-After connecting, open SSH Browser in the left sidebar:
-
-- Use the toolbar to upload, download, create directories, rename, or delete.
-- Drop local files or directories into the file list to upload them to the current directory, or drop them directly onto a remote directory.
-- Right-click a remote item to download it, change permissions, copy its path, rename it, or delete it.
-- Enable the location button to make the file browser follow the terminal's current working directory when possible.
-- Check transfer progress and results at the bottom of the panel.
-
-## Run from Source
-
-### Development requirements
-
-- Node.js 20 or newer
-- npm
-- A Linux desktop environment
+Requires Node.js 20 or newer, npm, and a Linux desktop environment.
 
 ```bash
-git clone https://github.com/mobanexterm/mobanexterm.git
-cd mobanexterm
+git clone https://github.com/xiaozhangyu250/MobaNexterm.git
+cd MobaNexterm
 npm ci
 npm run dev
 ```
@@ -189,77 +169,66 @@ npm run build
 npm run preview
 ```
 
-## Build Linux Packages
-
-Build both the Debian package and AppImage:
+### Build Linux packages
 
 ```bash
-npm run package:linux -- --version 0.1.0
+npm run package:linux                         # deb + AppImage, using package.json version
+npm run package:linux -- --targets deb         # deb only
+npm run package:linux -- --targets AppImage    # AppImage only
 ```
 
-Artifacts are written to `release/`. You can also build a single target:
+Artifacts go to `release/`. Use `--version X.Y.Z` to update the version before packaging; this also modifies `package.json` and the lockfile. The repository includes support for filesystems without symlinks, such as exFAT; see `.npmrc` and `scripts/setup-bin-shims.cjs`.
+
+## Development and Testing
 
 ```bash
-npm run package:linux -- --version 0.1.0 --targets deb
-npm run package:linux -- --version 0.1.0 --targets AppImage
+npm run check             # Types, lint, unit/service regressions, production build
+npm run test:electron     # Electron + isolated SSH/SFTP workflow regressions
+# Linux CI without a desktop display
+xvfb-run -a npm run test:electron
 ```
 
-Skip the pre-package type check during local iteration:
+Coverage includes terminal protocols and connection lifecycle, file refresh, text saving, window geometry, performance sampling, command execution, and configuration import/export. Desktop tests use temporary profiles and local demo services, not users' saved hosts. CI runs the checks and retains screenshots. See [validation notes](doc/engineering/VALIDATION.md) for distribution and physical-display testing boundaries.
+
+Recreate the screenshots in this README:
 
 ```bash
-npm run package:linux -- --skip-checks
+npm run docs:screenshots
+# Without a display: xvfb-run -a npm run docs:screenshots
 ```
 
-## Development Checks
-
-Run these checks before submitting code:
-
-```bash
-npm run typecheck
-npm run lint
-npm test
-npm run build
-```
-
-## Tech Stack
-
-- Electron
-- React 18
-- TypeScript
-- xterm.js
-- ssh2
-- Zustand
-- Tailwind CSS
-- Radix UI
-- electron-builder
-
-## Project Structure
+This builds the current code and prepares demo scenarios in the actual Electron UI, updating `doc/img/readme-*.png`. No robot or personal session data is needed.
 
 ```text
 src/
-  main/       Electron main process, IPC, SSH/SFTP services, and credential storage
-  preload/    Typed APIs exposed to the renderer
-  renderer/   React UI, state management, and terminal components
-  shared/     Types and constants shared across processes
-scripts/      Development, dependency setup, and Linux packaging scripts
-tests/        Unit tests
-doc/img/      Documentation screenshots
+  main/         Electron main process, IPC, SSH/SFTP, command storage, metrics
+  preload/      Typed cross-process APIs
+  renderer/     React UI, state, terminals, and independent editor windows
+  shared/       Shared types, validation, and configuration exchange format
+scripts/        Development, packaging, and README screenshot scripts
+tests/unit/     Unit and service regressions
+tests/electron/ Desktop workflows and SSH/SFTP fixtures
+doc/engineering/ Design notes, roadmap, and validation boundaries
+doc/img/        Documentation screenshots
 ```
 
-## Filesystem Compatibility
+Stack: Electron · React 18 · TypeScript · xterm.js · ssh2 · Zustand · Tailwind CSS · Radix UI · electron-builder.
 
-The repository includes `.npmrc` and `scripts/setup-bin-shims.cjs` for filesystems that do not support symbolic links, such as exFAT. No additional setup is required on regular Linux filesystems.
+## Compatibility and Known Limits
 
-## Current Scope
+- **Directory following:** requires Bash/Zsh integration or remote OSC 7 reports. File refresh uses polling, not server-side filesystem events.
+- **Performance summary:** reports the root filesystem rather than all disks combined. Restricted SSH exec, missing tools, or insufficient permissions may leave some metrics unavailable.
+- **Quick commands:** the execution wrapper targets Bash/Zsh/POSIX-compatible shells; fish is unverified. Not every normal-screen interactive program can be detected, so return to an empty shell prompt before running a command.
+- **Text saving:** requires OpenSSH `posix-rename`. Replacement does not preserve extended ACLs, xattrs, or hard-link relationships, and does not provide an atomic cross-process conflict lock.
+- **Credentials and trust:** Electron `safeStorage` is used when available, with a local plaintext fallback otherwise. SSH host-key fingerprint trust management still needs work; see [validation and limitations](doc/engineering/VALIDATION.md).
+- **Not implemented yet:** Windows/macOS packages, session groups, graphical SSH Agent configuration, jump hosts, port forwarding, and split terminals.
 
-The current release focuses on SSH terminal and SFTP workflows on Linux. Windows/macOS packages, session groups, graphical SSH Agent configuration, jump hosts, port forwarding, and a remote file editor are not yet provided as stable features.
+See [PLAN.md](doc/engineering/PLAN.md) for the roadmap. Feedback based on real debugging workflows is welcome.
 
 ## Contributing
 
-Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before starting development.
-
-Do not post passwords, private keys, real host details, or other sensitive data in public issues. Report security issues privately by following [SECURITY.md](SECURITY.md).
+[Issues](https://github.com/xiaozhangyu250/MobaNexterm/issues) and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for development conventions and [SECURITY.md](SECURITY.md) for private security reports. Include the version, system environment, and reproduction steps; remove passwords, private keys, and real device details.
 
 ## License
 
-MobaNexterm is open source under the [MIT License](LICENSE).
+[MIT License](LICENSE)

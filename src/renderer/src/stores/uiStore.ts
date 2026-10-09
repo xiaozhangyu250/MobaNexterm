@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Session } from '@shared/types/session';
 
-export type SidebarPanel = 'sessions' | 'browser';
+export type SidebarPanel = 'sessions' | 'browser' | 'shortcuts';
 
 interface UiState {
   sessionDialogOpen: boolean;

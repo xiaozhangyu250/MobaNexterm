@@ -4,6 +4,9 @@ import { SSHClient } from '../services/SSHClient';
 import { Channels } from '../utils/channels';
 
 export function registerSshIpc(): void {
+  ipcMain.handle(Channels.Ssh.Metrics, (event, tabId: string) =>
+    SSHClient.metrics(tabId, event.sender.id),
+  );
   ipcMain.handle(
     Channels.Ssh.Connect,
     (

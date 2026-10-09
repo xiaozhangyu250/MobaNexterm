@@ -1,3 +1,5 @@
+import type { ShortcutImportPreview } from '../shortcutTransfer';
+import type { Shortcut, ShortcutInput, SyntaxCheck } from './shortcut';
 import type { Session } from './session';
 
 // IPC API contract — single source of truth shared by main / preload / renderer.
@@ -32,7 +34,26 @@ export interface TerminalConnectOptions {
   shellIntegration?: boolean;
 }
 
+export interface RemoteMetrics {
+  sampledAt: number;
+  cpuPercent: number | null;
+  memory: { used: number; total: number; percent: number } | null;
+  disk: { used: number; total: number; percent: number } | null;
+  load1: number | null;
+}
+
 export interface IpcApi {
+  shortcuts: {
+    exportFile(ids: string[]): Promise<{ count: number; filename: string } | null>;
+    chooseImport(): Promise<ShortcutImportPreview | null>;
+    importCopies(inputs: ShortcutInput[]): Promise<Shortcut[]>;
+    list(): Promise<Shortcut[]>;
+    save(input: ShortcutInput, id?: string, expectedUpdatedAt?: number): Promise<Shortcut>;
+    remove(id: string): Promise<void>;
+    openEditor(id?: string, sessionId?: string): Promise<void>;
+    check(command: string): Promise<SyntaxCheck>;
+    execute(id: string, tabId: string): Promise<void>;
+  };
   app: {
     ping(): Promise<'pong'>;
     getVersion(): Promise<string>;
@@ -63,6 +84,7 @@ export interface IpcApi {
       sftpAvailable: boolean;
       sftpMessage?: string;
     }>;
+    metrics(tabId: string): Promise<RemoteMetrics>;
     write(tabId: string, data: string): Promise<void>;
     resize(tabId: string, cols: number, rows: number): Promise<void>;
     disconnect(tabId: string): Promise<void>;
@@ -95,6 +117,7 @@ export interface IpcApi {
 
 // Events emitted from main → renderer.
 export interface IpcEventMap {
+  'shortcuts:changed': Record<string, never>;
   'ssh:data': { tabId: string; data: string; connectionId: string };
   'ssh:cwd': { tabId: string; cwd: string };
   'ssh:status': {
